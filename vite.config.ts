@@ -7,8 +7,6 @@ const root = import.meta.dirname
 const src = resolve(root, 'src')
 const out = resolve(root, 'dist')
 
-const entrySrc = resolve(src, 'entry')
-
 export default defineConfig({
   resolve: {
     alias: {
@@ -31,24 +29,24 @@ export default defineConfig({
     sourcemap: true,
     reportCompressedSize: false,
     lib: {
-      // `common` is built so the shared code lands in one chunk the others import; it is not published.
       entry: {
-        index: resolve(entrySrc, 'index.ts'),
-        parser: resolve(entrySrc, 'parser.ts'),
-        generator: resolve(entrySrc, 'generator.ts'),
+        index: resolve(src, 'index.ts'),
+        parser: resolve(src, 'parser.ts'),
+        generator: resolve(src, 'generator.ts'),
         common: resolve(src, 'common/index.ts'),
       },
       formats: ['es'],
     },
     rollupOptions: {
       // Only the packages stay external; the entry modules are matched by resolved path, since matching them by the text `./parser` also catches a relative import that merely ends in it.
-      external: (id) => /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(entrySrc, 'parser') || id === resolve(entrySrc, 'generator'),
+      external: (id) =>
+        /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator'),
       // Lets an entry chunk absorb the modules it shares, so no hashed chunk is emitted beside it.
       preserveEntrySignatures: 'allow-extension',
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        paths: { [resolve(entrySrc, 'parser')]: './parser.js', [resolve(entrySrc, 'generator')]: './generator.js' },
+        paths: { [resolve(src, 'parser')]: './parser.js', [resolve(src, 'generator')]: './generator.js' },
       },
     },
   },
