@@ -1,0 +1,29 @@
+{
+  "name": "@gondola-lyrics/playground",
+  "version": "0.0.0",
+  "description": "Gondola lyrics playground",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "check": "vue-tsc --noEmit",
+    "build": "npm run check && vite build",
+    "preview": "vite preview",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "vue": "3.5.38"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@vitejs/plugin-vue": "6.0.7",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vue-tsc": "3.3.4"
+  }
+}
