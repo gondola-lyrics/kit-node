@@ -38,10 +38,10 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      // Only the packages stay external; the entry modules are matched by resolved path, since matching them by the text `./parser` also catches a relative import that merely ends in it.
+      // Match entry modules by absolute path to avoid treating unrelated relative imports as public entries.
       external: (id) =>
         /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator'),
-      // Lets an entry chunk absorb the modules it shares, so no hashed chunk is emitted beside it.
+      // Allow shared modules in entry chunks to avoid emitting extra shared chunks.
       preserveEntrySignatures: 'allow-extension',
       output: {
         entryFileNames: '[name].js',

@@ -11,9 +11,8 @@ export const TAG_PATTERN = /\[([^\]]*)\]/g
 export const META_PATTERN = /^([A-Za-z0-9_-]+)\s*:\s*([\s\S]*)$/
 
 /**
- * Reads a word's own timing tag: a time, or a millisecond offset from the line's own time with an optional duration after a comma.
- * A bare number is the offset, since `<500>` states half a second past the line's time rather than a point on the clock.
- * A zero duration leaves the end open, since the tag stated only where the word starts.
+ * Integer tags use `offset[,duration]` in milliseconds relative to the line start; clock tags are absolute.
+ * A missing or zero duration leaves the word end unspecified.
  */
 export const parseWordTime = (body: string, lineStart: number) => {
   if (isTime(body)) {
@@ -34,8 +33,7 @@ export const parseWordTime = (body: string, lineStart: number) => {
 }
 
 /**
- * A run of a line's text and the timing tag that times it, if any.
- * A tag stands before the word it times, as in `<0,500>hel`.
+ * Tags precede their text, as in `<0,500>hel`.
  */
 export interface WordPiece {
   text: string
@@ -43,8 +41,7 @@ export interface WordPiece {
 }
 
 /**
- * Splits a line's content into the runs of text it carries, each with the tag standing before it.
- * Text the line opens with is the first run and carries no tag; a tag with nothing after it times no word and is dropped.
+ * Untagged leading text is preserved; tags without following text produce no piece.
  */
 export const splitWordTags = (content: string) => {
   const pieces: WordPiece[] = []
@@ -72,14 +69,14 @@ export const splitWordTags = (content: string) => {
 }
 
 /**
- * Whether a run of text is whitespace only, so it separates words rather than being one.
+ * Empty strings also count as whitespace-only text.
  */
 export const isBlank = (text: string) => {
   return text.trim() === ''
 }
 
 /**
- * Builds a normal word, carrying a time range only when the text stated one.
+ * Missing starts omit the range instead of inventing a word timestamp.
  */
 export const makeWord = (text: string, start?: number, end?: number) => {
   const time = start === undefined ? undefined : makeTimeRange({ start, end })
@@ -88,7 +85,7 @@ export const makeWord = (text: string, start?: number, end?: number) => {
 }
 
 /**
- * Builds a space word, the separator between two words.
+ * Separators use one ASCII space regardless of the source whitespace.
  */
 export const makeSpace = () => {
   return makeWordSpace({ text: ' ' })

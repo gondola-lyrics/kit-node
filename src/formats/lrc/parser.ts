@@ -48,9 +48,6 @@ const readMeta = (body: string) => {
   return { key: (match[1] ?? '').toLowerCase(), value: (match[2] ?? '').trim() }
 }
 
-/**
- * Sorts one group of tags into a timed line or a meta pair, the group sharing the text that stands after it.
- */
 const readGroup = (tags: string[], text: string, timed: TimedLine[], meta: MetaTag[]) => {
   for (const tag of tags) {
     const start = isTime(tag) ? parseTime(tag) : undefined
@@ -67,10 +64,8 @@ const readGroup = (tags: string[], text: string, timed: TimedLine[], meta: MetaT
 }
 
 /**
- * Reads the source into the timed lines and meta pairs it states.
- * A tag with no text after it is stacked with the tag that follows, as `[00:10][00:20]twice` states one stretch of text at two times.
- * Text standing before a line's first tag belongs to no tag, so it is dropped rather than guessed at.
- * A carriage return is a line ending rather than content, so a `\r\n` source reads the same as one written with `\n`.
+ * Stacked timestamps share the following text, as in `[00:10][00:20]twice`.
+ * Text before the first tag is discarded because it has no timing association.
  */
 const readTimedLines = (text: string) => {
   const timed: TimedLine[] = []
@@ -100,7 +95,7 @@ const readTimedLines = (text: string) => {
       group = []
     }
 
-    // A group left over is a run of tags the line ends with, so they share no text.
+    // Trailing timestamps still represent empty timed lines.
     readGroup(group, '', timed, meta)
   }
 
@@ -108,8 +103,8 @@ const readTimedLines = (text: string) => {
 }
 
 /**
- * Fills a lyric's meta from the tags gathered across the file.
- * A tag whose key no field claims is kept verbatim in `unknowns`, since a round trip loses nothing; a value the schema would reject is the model's to report.
+ * Unmapped tags and unparseable durations remain in `unknowns` to avoid discarding metadata.
+ * Keys are lowercased and values trimmed, so original tag spelling is not preserved.
  */
 const readMetaTags = (tags: MetaTag[]) => {
   const meta = makeMeta()
@@ -118,7 +113,7 @@ const readMetaTags = (tags: MetaTag[]) => {
     switch (tag.key) {
       case 'length':
       case 'duration': {
-        // A duration is written as a time or as a bare count of milliseconds, so both are read.
+        // Duration tags accept both clock notation and integer milliseconds.
         const duration = parseTime(tag.value) ?? (isBareNumber(tag.value) ? Number(tag.value) : Number.NaN)
         if (Number.isFinite(duration)) {
           meta.duration = Math.trunc(duration)
@@ -159,14 +154,12 @@ const readMetaTags = (tags: MetaTag[]) => {
 }
 
 /**
- * Reads the words a line decomposes into, each carrying the range stated before it.
- * A tag times the word that follows it, and a run of whitespace becomes one space word however wide it is written.
- * A word left without a time is left without one: a word-level line asks every sung word for a range, and reporting a word that states none is the model's to do.
+ * Whitespace becomes a single separator only between words.
+ * Untimed words remain untimed for model validation rather than receiving inferred timestamps.
  */
 const readWords = (text: string, lineStart: number) => {
   const words: runtime.Word[] = []
 
-  /** Whether whitespace was crossed since the last word, so the next one needs a separator before it. */
   let pending = false
 
   for (const piece of splitWordTags(text)) {
@@ -176,10 +169,9 @@ const readWords = (text: string, lineStart: number) => {
         continue
       }
 
-      // The tag times the word it opens; a run after a space within the same piece carries no tag.
+      // A tag applies only to its immediate run, not later words in the same piece.
       const tag = index === 0 ? piece.tag : undefined
 
-      // Whitespace only separates when a word stands on the other side of it.
       if (pending && words.length) {
         words.push(makeSpace())
       }
@@ -193,10 +185,6 @@ const readWords = (text: string, lineStart: number) => {
   return words
 }
 
-/**
- * Builds a line from its text, in the shape its own tags state: the words they time each one, or the whole text otherwise.
- * A line's end is where the next one begins, since the format states only where each line starts.
- */
 const readLine = (text: string, start: number, end: number | undefined) => {
   const time = makeTimeRange({ start, end })
   const content = isWordTimed(text) ? makeLineContentWords(readWords(text, start)) : makeLineContentText(text.trim())
@@ -205,9 +193,9 @@ const readLine = (text: string, start: number, end: number | undefined) => {
 }
 
 /**
- * Reads LRC text into a runtime lyric, keeping the lines in the order the file wrote them.
- * Nothing the text got wrong is judged here: a line out of order, a line carrying no text and a word carrying no time all reach the tree as written, for the model's `validateLyric` to report.
- * Text carrying no time this format can read still yields a lyric, marked `INVALID`, since a text handed to this reader is one it was asked to read.
+ * Source order, empty timed lines, and missing word times are preserved for model validation.
+ *
+ * `INVALID` means no readable timed lines; `VALID` does not imply model validation has passed.
  */
 export const parseLrc = (text: string): runtime.Lyric => {
   const { timed, meta } = readTimedLines(text)
@@ -221,12 +209,12 @@ export const parseLrc = (text: string): runtime.Lyric => {
 
   for (const [index, item] of timed.entries()) {
     const next = timed[index + 1]?.start
+    // LRC has no line ends; only a nondecreasing next timestamp can supply one.
     const end = next !== undefined && next >= item.start ? next : undefined
 
     lines.push(readLine(item.text, item.start, end))
   }
 
-  // A line carrying words is what makes the lyric word-timed.
   const wordTimed = lines.some((line) => (line.content?.words.length ?? 0) > 0)
 
   return makeLyric({
