@@ -71,7 +71,7 @@ const readTimedLines = (text: string) => {
   const timed: TimedLine[] = []
   const meta: MetaTag[] = []
 
-  for (const raw of text.replaceAll('\r\n', '\n').split('\n')) {
+  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
     const line = raw.trim()
     if (!line) {
       continue

@@ -7,6 +7,6 @@ import { TAG_PATTERN } from './utils'
  * This is a format probe, not a validity check.
  */
 export const detectLrc = (text: string) => {
-  const lines = text.replaceAll('\r\n', '\n').split('\n')
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
   return lines.some((line) => [...line.matchAll(TAG_PATTERN)].some((match) => isTime(match[1] ?? '')))
 }
