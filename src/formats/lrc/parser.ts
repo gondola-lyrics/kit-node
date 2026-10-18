@@ -3,6 +3,7 @@ import type { runtime } from '@gondola-lyrics/model'
 import {
   Timing,
   LyricStatus,
+  WordType,
   makeLineContentText,
   makeLineContentWords,
   makeLineNormal,
@@ -11,15 +12,15 @@ import {
   makeMeta,
   makeText,
   makeUnknownEntry,
+  makeWordNormal,
+  makeWordSpace,
   deriveLanguageUsages,
 } from '@gondola-lyrics/model/runtime'
 
-import { META_PATTERN, TAG_PATTERN, isBlank, makeSpace, makeWord, parseWordTime, splitWordTags } from './utils'
+import { META_PATTERN, TAG_PATTERN, parseWordTime, splitWordTags } from './utils'
 import { isTime, parseTime } from '@root/utils'
 
 const FORMAT = 'lrc'
-
-const BARE_NUMBER_PATTERN = /^\d+$/
 
 interface TimedLine {
   text: string
@@ -32,11 +33,15 @@ interface MetaTag {
 }
 
 const isBareNumber = (value: string) => {
-  return BARE_NUMBER_PATTERN.test(value.trim())
+  return /^\d+$/.test(value.trim())
 }
 
+/**
+ * A trailing tag alone still makes the line word-level, so it can close the last word.
+ * Unreadable angle-bracket text stays plain lyric content.
+ */
 const isWordTimed = (text: string) => {
-  return splitWordTags(text).some((piece) => piece.tag !== undefined && !isBlank(piece.text))
+  return splitWordTags(text).some((piece) => piece.tag !== undefined && parseWordTime(piece.tag, 0) !== undefined)
 }
 
 const readMeta = (body: string) => {
@@ -154,40 +159,107 @@ const readMetaTags = (tags: MetaTag[]) => {
 }
 
 /**
- * Whitespace becomes a single separator only between words.
- * Untimed words remain untimed for model validation rather than receiving inferred timestamps.
+ * Whitespace becomes a space word preserving the source run, as in `lo      World`.
+ * A tag opens a segment; untagged words continue from the previous end so the timeline has no holes.
+ * Explicit word ends are kept as written, so duration tags survive unchanged.
  */
 const readWords = (text: string, lineStart: number) => {
-  const words: runtime.Word[] = []
+  const drafts: { text: string; start?: number; end?: number; space?: boolean }[] = []
+  const open = new Set<{ start?: number; end?: number }>()
 
-  let pending = false
+  const closeSegment = (boundary: number | undefined) => {
+    if (boundary === undefined) {
+      return
+    }
+    for (const draft of open) {
+      if (draft.start !== undefined && draft.end === undefined && boundary >= draft.start) {
+        draft.end = boundary
+      }
+    }
+    open.clear()
+  }
+
+  let segmentStart: number | undefined = lineStart
+  let cursor: number | undefined = lineStart
 
   for (const piece of splitWordTags(text)) {
-    for (const [index, run] of piece.text.split(/\s+/).entries()) {
+    const time = piece.tag === undefined ? undefined : parseWordTime(piece.tag, lineStart)
+
+    // A tag, even without following text, closes the segment it opens.
+    if (time?.start !== undefined) {
+      closeSegment(time.start)
+      segmentStart = time.start
+      cursor = time.start
+    }
+
+    if (!piece.text) {
+      continue
+    }
+
+    let applied = false
+
+    for (const run of piece.text.split(/(\s+)/)) {
       if (!run) {
-        pending = true
         continue
       }
 
-      // A tag applies only to its immediate run, not later words in the same piece.
-      const tag = index === 0 ? piece.tag : undefined
-
-      if (pending && words.length) {
-        words.push(makeSpace())
+      // A separator keeps its own text and never carries a tag.
+      if (!run.trim()) {
+        if (drafts.length) {
+          drafts.push({ text: run, space: true })
+        }
+        continue
       }
 
-      const time = tag === undefined ? undefined : parseWordTime(tag, lineStart)
-      words.push(makeWord(run, time?.start, time?.end))
-      pending = false
+      const tagged = !applied && time?.start !== undefined
+      applied = true
+
+      const start = tagged ? segmentStart : cursor
+      const end = tagged ? time?.end : undefined
+      const draft = { text: run, start, end }
+
+      drafts.push(draft)
+      if (end !== undefined) {
+        cursor = end
+      } else {
+        open.add(draft)
+      }
     }
   }
 
-  return words
+  return { drafts, closeSegment }
 }
 
-const readLine = (text: string, start: number, end: number | undefined) => {
+/**
+ * A line ends at the next line's start; without one, it ends at its final word's end.
+ * An open word is closed by the next timed word, or by the line end, so every sung word stays inside the line.
+ */
+const readLine = (text: string, start: number, nextStart: number | undefined) => {
+  const wordTimed = isWordTimed(text)
+  const { drafts, closeSegment } = wordTimed ? readWords(text, start) : { drafts: [], closeSegment: () => {} }
+
+  let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
+
+  // Without a later line, a final word carrying its own end bounds the line; otherwise it stays open.
+  if (end === undefined) {
+    const last = [...drafts].reverse().find((draft) => !draft.space && draft.start !== undefined)
+    end = last?.end
+  }
+
+  // Earlier segments were closed by their next tag, so this only closes the final one.
+  closeSegment(end)
+
+  const words = drafts.map((draft) => {
+    if (draft.space) {
+      return makeWordSpace({ text: draft.text })
+    }
+    // A missing start omits the range instead of inventing a word timestamp.
+    const time = draft.start === undefined ? undefined : makeTimeRange({ start: draft.start, end: draft.end })
+    return makeWordNormal({ text: draft.text, time })
+  })
+
   const time = makeTimeRange({ start, end })
-  const content = isWordTimed(text) ? makeLineContentWords(readWords(text, start)) : makeLineContentText(text.trim())
+  const content = wordTimed ? makeLineContentWords(words) : makeLineContentText(text.trim())
 
   return makeLineNormal({ time, content })
 }
@@ -210,9 +282,7 @@ export const parseLrc = (text: string): runtime.Lyric => {
   for (const [index, item] of timed.entries()) {
     const next = timed[index + 1]?.start
     // LRC has no line ends; only a nondecreasing next timestamp can supply one.
-    const end = next !== undefined && next >= item.start ? next : undefined
-
-    lines.push(readLine(item.text, item.start, end))
+    lines.push(readLine(item.text, item.start, next))
   }
 
   const wordTimed = lines.some((line) => (line.content?.words.length ?? 0) > 0)
