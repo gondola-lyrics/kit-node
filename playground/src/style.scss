@@ -1,0 +1,75 @@
+:root {
+  color-scheme: light;
+  font-family: 'MiSans', 'Microsoft YaHei', sans-serif;
+  color: #17364f;
+  background: #f1f7fc;
+  font-synthesis: none;
+  --text: #17364f;
+  --muted: #6b8396;
+  --line: #d6e5f1;
+  --wash: #f3f9fe;
+  --primary: #2b7fae;
+  --primary-deep: #1d5b80;
+  --primary-soft: #e3f1fb;
+  --mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  --radius: 6px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Reserve the gutter so preview/JSON swaps of different heights do not shift the layout. */
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+button {
+  color: inherit;
+}
+
+button:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+input,
+textarea,
+select {
+  accent-color: var(--primary);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}

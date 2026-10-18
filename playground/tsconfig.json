@@ -9,7 +9,12 @@
     "noUncheckedIndexedAccess": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@gondola-lyrics/kit": ["../src/index.ts"],
+      "@gondola-lyrics/kit/*": ["../src/*"],
+      "@root/*": ["../src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
 }
