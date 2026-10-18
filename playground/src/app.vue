@@ -127,6 +127,7 @@
                       {{ t('result.preview') }}
                     </button>
                     <button id="json-switch" type="button" :aria-pressed="view === 'json'" @click="view = 'json'">JSON</button>
+                    <button id="lrc-switch" type="button" :aria-pressed="view === 'lrc'" @click="view = 'lrc'">LRC</button>
                   </div>
                   <span :class="$style.viewCounts">
                     {{ result.lyric.lines.length }} {{ t('result.lineUnit') }}
@@ -137,8 +138,11 @@
                 <div v-if="view === 'preview'" id="result-preview" :class="$style.resultContent">
                   <ResultView :lyric="result.lyric" />
                 </div>
+                <div v-else-if="view === 'json'" :class="$style.jsonView">
+                  <pre id="result-json" :class="$style.jsonCode" tabindex="0" @keydown="selectAllIn($event)">{{ json }}</pre>
+                </div>
                 <div v-else :class="$style.jsonView">
-                  <pre id="result-json" :class="$style.jsonCode" tabindex="0">{{ json }}</pre>
+                  <pre id="result-lrc" :class="$style.jsonCode" tabindex="0" @keydown="selectAllIn($event)">{{ lrcText }}</pre>
                 </div>
               </div>
             </template>
@@ -162,8 +166,26 @@ import { useParser } from './composables/useParser'
 import { formatBytes } from './lib/format'
 
 const { locale, t, setLocale } = useI18n()
-const { form, result, parsing, error, errorDetail, storageAvailable, json } = useParser()
-const view = ref<'preview' | 'json'>('preview')
+const { form, result, parsing, error, errorDetail, storageAvailable, json, lrc } = useParser()
+const view = ref<'preview' | 'json' | 'lrc'>('preview')
+
+/**
+ * Annotations live in their own LRC files, so they are labelled to keep the sections apart.
+ */
+const lrcText = computed(() => {
+  const generated = lrc.value
+  if (!generated) {
+    return ''
+  }
+  const sections = [generated.original]
+  if (generated.translations) {
+    sections.push(`; translations\n${generated.translations}`)
+  }
+  if (generated.romans) {
+    sections.push(`; romans\n${generated.romans}`)
+  }
+  return sections.filter(Boolean).join('\n\n')
+})
 
 const statusLabel = computed(() => {
   if (result.value?.lyric.status === LyricStatus.VALID) {
@@ -197,6 +219,28 @@ const wordCount = computed(() => {
 
 const toggleLocale = () => {
   setLocale(locale.value === 'zh-CN' ? 'en' : 'zh-CN')
+}
+
+/**
+ * Select only the focused code block on Ctrl/Cmd+A instead of the whole page.
+ */
+const selectAllIn = (event: KeyboardEvent) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'a') {
+    return
+  }
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) {
+    return
+  }
+  event.preventDefault()
+  const selection = window.getSelection()
+  if (!selection) {
+    return
+  }
+  const range = document.createRange()
+  range.selectNodeContents(target)
+  selection.removeAllRanges()
+  selection.addRange(range)
 }
 onMounted(() => {
   document.documentElement.lang = locale.value
@@ -553,6 +597,9 @@ onMounted(() => {
   color: #1c3b54;
   font: 11px / 1.7 var(--mono);
   tab-size: 2;
+  /* Keep selection inside the code block so the page's other text is not swept in. */
+  user-select: text;
+  white-space: pre;
 }
 
 .empty {

@@ -4,7 +4,7 @@ import type { MessageKey } from './useI18n'
 import { canonicalizeLyric, encode, validateLyric } from '@gondola-lyrics/model/runtime'
 import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
-import { parser } from '@gondola-lyrics/kit'
+import { generator, parser } from '@gondola-lyrics/kit'
 
 interface FormState {
   mode: 'auto' | 'lrc'
@@ -60,6 +60,9 @@ export const useParser = () => {
 
   const json = computed(() => {
     return result.value ? JSON.stringify(result.value.lyric, null, 2) : ''
+  })
+  const lrc = computed(() => {
+    return result.value ? generator.generate(result.value.lyric) : null
   })
 
   const cancelScheduledParse = () => {
@@ -168,5 +171,5 @@ export const useParser = () => {
     cancelScheduledParse()
   })
 
-  return { form, result, parsing, error, errorDetail, storageAvailable, json }
+  return { form, result, parsing, error, errorDetail, storageAvailable, json, lrc }
 }
