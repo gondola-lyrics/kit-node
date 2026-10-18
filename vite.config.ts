@@ -33,7 +33,10 @@ export default defineConfig({
         index: resolve(src, 'index.ts'),
         parser: resolve(src, 'parser.ts'),
         generator: resolve(src, 'generator.ts'),
+        // common entrys
         common: resolve(src, 'common/index.ts'),
+        formats: resolve(src, 'formats/index.ts'),
+        transforms: resolve(src, 'transforms/index.ts'),
       },
       formats: ['es'],
     },
@@ -46,7 +49,10 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        paths: { [resolve(src, 'parser')]: './parser.js', [resolve(src, 'generator')]: './generator.js' },
+        paths: {
+          [resolve(src, 'parser')]: './parser.js',
+          [resolve(src, 'generator')]: './generator.js',
+        },
       },
     },
   },
