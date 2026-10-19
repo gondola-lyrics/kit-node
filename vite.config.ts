@@ -33,8 +33,7 @@ export default defineConfig({
         index: resolve(src, 'index.ts'),
         parser: resolve(src, 'parser.ts'),
         generator: resolve(src, 'generator.ts'),
-        // common entrys
-        common: resolve(src, 'common/index.ts'),
+        // Internal entries keep shared code in one chunk instead of copying it into each public entry.
         formats: resolve(src, 'formats/index.ts'),
         transforms: resolve(src, 'transforms/index.ts'),
       },

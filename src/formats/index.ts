@@ -46,4 +46,6 @@ export const generate = (lyric: runtime.Lyric, options: LrcGenerateOptions = {})
   }
 }
 
+export type { LyricFormat } from './format'
+
 export * from './lrc'
