@@ -78,7 +78,7 @@ export const useParser = () => {
     return result.value ? JSON.stringify(result.value.lyric, null, 2) : ''
   })
   const lrc = computed(() => {
-    return result.value ? generate(result.value.lyric) : null
+    return result.value ? generate(result.value.lyric, 'lrc') : null
   })
 
   const cancelScheduledParse = () => {

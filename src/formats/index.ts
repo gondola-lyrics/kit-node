@@ -1,4 +1,5 @@
 import type { runtime } from '@gondola-lyrics/model'
+import type { LyricFormat } from './format'
 import type { LrcGenerateOptions, LrcGenerateResult, LrcParseInput, LrcParseOptions } from './lrc'
 
 import { detectLrc, generateLrc, parseLrc } from './lrc'
@@ -33,16 +34,12 @@ export const parse = (input: unknown, options: LrcParseOptions = {}): runtime.Ly
 }
 
 /**
- * Generates text in the lyric's own format.
- *
- * A format without a generator returns `null` rather than guessing another one.
+ * Generates text in the requested format, which need not match `lyric.format`.
  */
-export const generate = (lyric: runtime.Lyric, options: LrcGenerateOptions = {}): LrcGenerateResult | null => {
-  switch (lyric.format) {
+export const generate = (lyric: runtime.Lyric, target: LyricFormat, options: LrcGenerateOptions = {}): LrcGenerateResult => {
+  switch (target) {
     case 'lrc':
       return generateLrc(lyric, options)
-    default:
-      return null
   }
 }
 
