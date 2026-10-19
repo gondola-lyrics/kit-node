@@ -257,6 +257,36 @@ const formatCommit = (commit: Commit, url: string | null): string => {
   return `${commit.message} (${link})`
 }
 
+interface Entry {
+  scope: string | undefined
+  text: string
+}
+
+/**
+ * Groups entries under their scope so related changes read together, and keeps unscoped ones as plain items.
+ *
+ * Scopes appear in the order they were first used, which keeps the newest work first like the log itself.
+ */
+const renderEntries = (entries: Entry[]): string[] => {
+  const groups = new Map<string, string[]>()
+  const plain: string[] = []
+
+  for (const entry of entries) {
+    if (entry.scope === undefined) {
+      plain.push(`- ${entry.text}`)
+      continue
+    }
+    const group = groups.get(entry.scope)
+    if (group) {
+      group.push(`  - ${entry.text}`)
+    } else {
+      groups.set(entry.scope, [`  - ${entry.text}`])
+    }
+  }
+
+  return [...[...groups].flatMap(([scope, items]) => [`- ${scope}`, ...items]), ...plain]
+}
+
 const formatDay = (day: Date): string => {
   const year = String(day.getFullYear())
   const month = String(day.getMonth() + 1).padStart(2, '0')
@@ -267,10 +297,10 @@ const formatDay = (day: Date): string => {
 const buildSection = (version: string, commits: Commit[], url: string | null, day: Date): string => {
   const lines = [`## v${version} (${formatDay(day)})`]
 
-  const breaking = commits.flatMap((commit) => commit.breaking)
+  const breaking = commits.flatMap((commit) => commit.breaking.map((text) => ({ scope: commit.scope, text })))
   if (breaking.length > 0) {
     lines.push('', '### Breaking', '')
-    lines.push(...breaking.map((text) => `- ${text}`))
+    lines.push(...renderEntries(breaking))
   }
 
   for (const [kind, title] of TYPE_TITLES) {
@@ -279,7 +309,7 @@ const buildSection = (version: string, commits: Commit[], url: string | null, da
       continue
     }
     lines.push('', `### ${title}`, '')
-    lines.push(...group.map((commit) => `- ${formatCommit(commit, url)}`))
+    lines.push(...renderEntries(group.map((commit) => ({ scope: commit.scope, text: formatCommit(commit, url) }))))
   }
 
   if (breaking.length === 0 && commits.length === 0) {
