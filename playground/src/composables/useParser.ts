@@ -4,7 +4,7 @@ import type { MessageKey } from './useI18n'
 import { canonicalizeLyric, encode, validateLyric } from '@gondola-lyrics/model/runtime'
 import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
-import { generator, parser } from '@gondola-lyrics/kit'
+import { generate, parse, parseLrc } from '@gondola-lyrics/kit'
 
 interface FormState {
   mode: 'auto' | 'lrc'
@@ -78,7 +78,7 @@ export const useParser = () => {
     return result.value ? JSON.stringify(result.value.lyric, null, 2) : ''
   })
   const lrc = computed(() => {
-    return result.value ? generator.generate(result.value.lyric) : null
+    return result.value ? generate(result.value.lyric) : null
   })
 
   const cancelScheduledParse = () => {
@@ -138,12 +138,12 @@ export const useParser = () => {
       const start = performance.now()
       const parsed =
         input.mode === 'lrc'
-          ? parser.parseLrc({
+          ? parseLrc({
               original: input.lrcContent,
               translations: input.translations.trim() ? input.translations : undefined,
               romans: input.romans.trim() ? input.romans : undefined,
             })
-          : parser.parse(input.autoContent)
+          : parse(input.autoContent)
       if (!parsed) {
         error.value = 'error.unrecognized'
         return
