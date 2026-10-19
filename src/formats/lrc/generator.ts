@@ -1,20 +1,21 @@
 import type { runtime } from '@gondola-lyrics/model'
+import type { LrcContent } from './common'
 
 import { LineType, WordType } from '@gondola-lyrics/model/runtime'
 
 import { formatTime } from '@root/utils'
 
-/**
- * How word-level timestamps are written.
- *
- * `angle` is the enhanced LRC form and round-trips through this parser.
- * `bracket` matches line timestamps, so this parser reads it as new lines rather than words.
- */
-export type LrcWordTiming = 'angle' | 'bracket' | 'none'
+export type LrcGenerateResult = LrcContent
 
 export interface LrcGenerateOptions {
-  /** Word-level timestamp style; defaults to `angle`. */
-  wordTiming?: LrcWordTiming
+  /**
+   * Word-level timestamp style; defaults to `angle`.
+   *
+   * `angle` is the enhanced LRC form and round-trips through this parser.
+   *
+   * `bracket` matches line timestamps, so this parser reads it as new lines rather than words.
+   */
+  wordTiming?: 'angle' | 'bracket' | 'none'
   /** Clock format for every timestamp; defaults to `mm:ss.SSS`. */
   timeFormat?: string
   /** Emit the metadata header; defaults to `true`. */
@@ -25,16 +26,7 @@ export interface LrcGenerateOptions {
   includeInstrumental?: boolean
 }
 
-export type LrcGenerateOptionsRequired = Required<LrcGenerateOptions>
-
-/**
- * The generated LRC text and the annotations LRC keeps in separate files.
- */
-export interface LrcGenerateResult {
-  original: string
-  translations?: string
-  romans?: string
-}
+type LrcGenerateOptionsRequired = Required<LrcGenerateOptions>
 
 const resolveOptions = (options: LrcGenerateOptions = {}): LrcGenerateOptionsRequired => {
   return {

@@ -8,9 +8,8 @@ import { detectLrc, generateLrc, parseLrc } from './lrc'
  *
  * Unrecognized text returns `undefined`.
  */
-export const detectFormat = (input: string | LrcParseInput) => {
-  const text = typeof input === 'string' ? input : input.original
-  if (detectLrc(text)) {
+export const detectFormat = (input: unknown) => {
+  if (detectLrc(input)) {
     return 'lrc'
   }
 
@@ -21,7 +20,7 @@ export const detectFormat = (input: string | LrcParseInput) => {
  * Unrecognized text returns `null`; a recognized format returns a lyric with its parser-assigned status.
  * Annotation tracks travel with the source and are attached by the format's parser.
  */
-export const parse = (input: string | LrcParseInput, options: LrcParseOptions = {}): runtime.Lyric | null => {
+export const parse = (input: unknown, options: LrcParseOptions = {}): runtime.Lyric | null => {
   const format = detectFormat(input)
   if (!format) {
     return null
@@ -29,7 +28,7 @@ export const parse = (input: string | LrcParseInput, options: LrcParseOptions = 
 
   switch (format) {
     case 'lrc':
-      return parseLrc(input, options)
+      return parseLrc(input as string | LrcParseInput, options)
   }
 }
 
