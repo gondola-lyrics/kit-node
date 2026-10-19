@@ -42,7 +42,7 @@ jobs:
 
       # The token is the fallback for a registry that does not answer the OIDC request.
       - name: Publish to npm
-        run: npm publish
+        run: npm run release -- publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
@@ -51,7 +51,7 @@ jobs:
         id: release
         run: |
           version="${GITHUB_REF_NAME#v}"
-          node script/build-change-log.ts "$version" --extract > "$RUNNER_TEMP/notes.md"
+          npm run build-change-log -- "$version" --extract > "$RUNNER_TEMP/notes.md"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Release

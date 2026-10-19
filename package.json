@@ -26,6 +26,9 @@
   },
   "scripts": {
     "build": "vite build",
+    "build-change-log": "tsx script/build-change-log.ts",
+    "bump-version": "tsx script/bump-version.ts",
+    "release": "tsx script/release.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write src"
   },
@@ -63,6 +66,7 @@
     "@microsoft/api-extractor": "^7.59.0",
     "@types/node": "26.4.1",
     "prettier": "3.9.6",
+    "tsx": "4.23.13",
     "typescript": "5.9.3",
     "vite": "8.2.2",
     "vite-plugin-dts": "5.1.0"
