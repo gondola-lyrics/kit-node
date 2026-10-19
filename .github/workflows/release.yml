@@ -7,7 +7,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
   id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -59,3 +64,46 @@ jobs:
         with:
           name: ${{ steps.release.outputs.version }}
           body_path: ${{ runner.temp }}/notes.md
+
+  pages:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            playground/package-lock.json
+
+      # The playground imports the model package from the root install.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install playground dependencies
+        run: npm ci
+        working-directory: playground
+
+      - name: Build playground
+        run: npm run build
+        working-directory: playground
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
