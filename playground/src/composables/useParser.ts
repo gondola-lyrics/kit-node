@@ -8,7 +8,12 @@ import { generator, parser } from '@gondola-lyrics/kit'
 
 interface FormState {
   mode: 'auto' | 'lrc'
-  content: string
+  /** Each mode keeps its own text, so switching never carries one format's source into another. */
+  autoContent: string
+  lrcContent: string
+  /** LRC keeps translations and romanizations in their own files, so they get their own inputs. */
+  translations: string
+  romans: string
 }
 
 interface ParsedResult {
@@ -25,17 +30,28 @@ const AUTO_PARSE_INTERVAL = 300
 
 const encoder = new TextEncoder()
 
+const readText = (saved: Record<string, unknown>, key: string): string => {
+  const value = saved[key]
+  return typeof value === 'string' ? value : ''
+}
+
 const readForm = (): FormState => {
-  const defaults: FormState = { mode: 'auto', content: '' }
+  const defaults: FormState = { mode: 'auto', autoContent: '', lrcContent: '', translations: '', romans: '' }
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return defaults
     }
     const saved = raw as Record<string, unknown>
+    const mode = saved.mode === 'lrc' ? 'lrc' : 'auto'
+    // An older entry stored one `content` field; it belongs to whichever mode was selected then.
+    const legacy = readText(saved, 'content')
     return {
-      mode: saved.mode === 'lrc' ? 'lrc' : 'auto',
-      content: typeof saved.content === 'string' ? saved.content : defaults.content,
+      mode,
+      autoContent: readText(saved, 'autoContent') || (mode === 'auto' ? legacy : ''),
+      lrcContent: readText(saved, 'lrcContent') || (mode === 'lrc' ? legacy : ''),
+      translations: readText(saved, 'translations'),
+      romans: readText(saved, 'romans'),
     }
   } catch {
     return defaults
@@ -107,7 +123,9 @@ export const useParser = () => {
     lastInput = JSON.stringify(input)
     resetResult()
 
-    if (!input.content.trim()) {
+    // Only the selected mode's source is parsed, and its annotation tracks travel with it.
+    const content = input.mode === 'lrc' ? input.lrcContent : input.autoContent
+    if (!content.trim()) {
       return
     }
 
@@ -118,7 +136,14 @@ export const useParser = () => {
         return
       }
       const start = performance.now()
-      const parsed = input.mode === 'lrc' ? parser.parseLrc(input.content) : parser.parse(input.content)
+      const parsed =
+        input.mode === 'lrc'
+          ? parser.parseLrc({
+              original: input.lrcContent,
+              translations: input.translations.trim() ? input.translations : undefined,
+              romans: input.romans.trim() ? input.romans : undefined,
+            })
+          : parser.parse(input.autoContent)
       if (!parsed) {
         error.value = 'error.unrecognized'
         return
@@ -137,7 +162,7 @@ export const useParser = () => {
         lyric,
         diagnostics,
         elapsed: performance.now() - start,
-        inputBytes: encoder.encode(input.content).byteLength,
+        inputBytes: encoder.encode(input.mode === 'lrc' ? input.lrcContent + input.translations + input.romans : input.autoContent).byteLength,
         encodedBytes,
         encodingError,
       }

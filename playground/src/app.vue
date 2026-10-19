@@ -41,12 +41,11 @@
             </div>
 
             <div v-if="form.mode === 'auto'" id="input-auto" role="tabpanel" aria-labelledby="mode-auto" :class="$style.editorShell">
-              <label :class="$style.visuallyHidden" for="lyrics-input">{{ t('input.label') }}</label>
+              <label :class="$style.visuallyHidden" for="lyrics-input-auto">{{ t('input.label') }}</label>
               <textarea
-                id="lyrics-input"
-                v-model="form.content"
+                id="lyrics-input-auto"
+                v-model="form.autoContent"
                 :class="$style.editor"
-                :placeholder="t('input.placeholder')"
                 :readonly="parsing"
                 spellcheck="false"
                 autocomplete="off"
@@ -55,17 +54,43 @@
             </div>
 
             <div v-else id="input-lrc" role="tabpanel" aria-labelledby="mode-lrc" :class="$style.editorShell">
-              <label :class="$style.visuallyHidden" for="lyrics-input">{{ t('input.label') }}</label>
+              <label :class="$style.visuallyHidden" for="lyrics-input-lrc">{{ t('input.label') }}</label>
               <textarea
-                id="lyrics-input"
-                v-model="form.content"
+                id="lyrics-input-lrc"
+                v-model="form.lrcContent"
                 :class="$style.editor"
-                :placeholder="t('input.placeholder')"
                 :readonly="parsing"
                 spellcheck="false"
                 autocomplete="off"
                 autocapitalize="off"
               ></textarea>
+
+              <div :class="$style.trackSection">
+                <div :class="$style.trackCell">
+                  <label :class="$style.trackLabel" for="lyrics-input-translations">{{ t('input.translations') }}</label>
+                  <textarea
+                    id="lyrics-input-translations"
+                    v-model="form.translations"
+                    :class="[$style.editor, $style.trackEditor]"
+                    :readonly="parsing"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                  ></textarea>
+                </div>
+                <div :class="$style.trackCell">
+                  <label :class="$style.trackLabel" for="lyrics-input-romans">{{ t('input.romans') }}</label>
+                  <textarea
+                    id="lyrics-input-romans"
+                    v-model="form.romans"
+                    :class="[$style.editor, $style.trackEditor]"
+                    :readonly="parsing"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                  ></textarea>
+                </div>
+              </div>
             </div>
 
             <p v-if="!storageAvailable" :class="$style.warning">{{ t('input.storage') }}</p>
@@ -377,6 +402,32 @@ onMounted(() => {
   background: #fff;
 }
 
+/* Tracks sit inside the source shell, so the whole input reads as one field rather than stacked boxes. */
+.trackSection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  background: #fcfdff;
+}
+
+.trackCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  & + & {
+    border-left: 1px solid var(--line);
+  }
+}
+
+.trackLabel {
+  padding: 10px 16px 0;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* The tabs sit on the editor's top edge, so the mode switch and source form read as one control. */
 .modeTabs + .editorShell {
   border-top-left-radius: 0;
@@ -404,6 +455,12 @@ onMounted(() => {
   &::placeholder {
     color: #8ba1b4;
   }
+}
+
+/* Track editors share the main editor's styling but stay shorter, and resizing one would break the pair's alignment. */
+.trackEditor {
+  min-height: 130px;
+  resize: none;
 }
 
 .warning {
