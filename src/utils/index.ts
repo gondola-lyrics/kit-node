@@ -1,3 +1,5 @@
+export * from './annotation'
+
 // A colon always separates units, so `1:14:514` means hours, minutes, and seconds, not minutes, seconds, and milliseconds.
 const TIME_PATTERN = /^(?:(?:(\d+):)?(\d+):)?(\d+)(?:\.(\d+))?$/
 

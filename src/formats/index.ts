@@ -1,16 +1,15 @@
 import type { runtime } from '@gondola-lyrics/model'
-import type { LrcGenerateOptions, LrcGenerateResult } from './lrc'
+import type { LrcGenerateOptions, LrcGenerateResult, LrcParseInput, LrcParseOptions } from './lrc'
 
 import { detectLrc, generateLrc, parseLrc } from './lrc'
 
-export * from './lrc'
-
 /**
- * Recognition does not imply valid source syntax.
+ * Recognition reads only the original text; the annotation tracks never decide the format.
  *
  * Unrecognized text returns `undefined`.
  */
-export const detectFormat = (text: string) => {
+export const detectFormat = (input: string | LrcParseInput) => {
+  const text = typeof input === 'string' ? input : input.original
   if (detectLrc(text)) {
     return 'lrc'
   }
@@ -20,16 +19,17 @@ export const detectFormat = (text: string) => {
 
 /**
  * Unrecognized text returns `null`; a recognized format returns a lyric with its parser-assigned status.
+ * Annotation tracks travel with the source and are attached by the format's parser.
  */
-export const parse = (text: string): runtime.Lyric | null => {
-  const format = detectFormat(text)
+export const parse = (input: string | LrcParseInput, options: LrcParseOptions = {}): runtime.Lyric | null => {
+  const format = detectFormat(input)
   if (!format) {
     return null
   }
 
   switch (format) {
     case 'lrc':
-      return parseLrc(text)
+      return parseLrc(input, options)
   }
 }
 
@@ -46,3 +46,5 @@ export const generate = (lyric: runtime.Lyric, options: LrcGenerateOptions = {})
       return null
   }
 }
+
+export * from './lrc'

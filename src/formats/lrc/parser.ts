@@ -1,9 +1,9 @@
 import type { runtime } from '@gondola-lyrics/model'
+import type { LrcContent } from './common'
 
 import {
   Timing,
   LyricStatus,
-  WordType,
   makeLineContentText,
   makeLineContentWords,
   makeLineNormal,
@@ -17,10 +17,20 @@ import {
   deriveLanguageUsages,
 } from '@gondola-lyrics/model/runtime'
 
-import { META_PATTERN, TAG_PATTERN, parseWordTime, splitWordTags } from './utils'
-import { isTime, parseTime } from '@root/utils'
+import { attachLineAnnotations, isTime, parseTime } from '@root/utils'
 
-const FORMAT = 'lrc'
+import { FORMAT, readLrcContent } from './common'
+import { META_PATTERN, TAG_PATTERN, parseWordTime, splitWordTags } from './utils'
+
+export interface LrcParseOptions {
+  /**
+   * How far an annotation's timestamp may sit from a line's start, in milliseconds.
+   * Defaults to `0`, which requires an exact match.
+   */
+  annotationTolerance?: number
+}
+
+export type LrcParseInput = LrcContent
 
 interface TimedLine {
   text: string
@@ -265,18 +275,10 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
 }
 
 /**
- * Source order, empty timed lines, and missing word times are preserved for model validation.
- *
- * `INVALID` means no readable timed lines; `VALID` does not imply model validation has passed.
+ * Builds one line per timed row, so an annotation track reuses the original text's reading unchanged.
+ * An empty timed row still yields a line, since it marks a gap rather than a parse failure.
  */
-export const parseLrc = (text: string): runtime.Lyric => {
-  const { timed, meta } = readTimedLines(text)
-  const metaTags = readMetaTags(meta)
-
-  if (!timed.length) {
-    return makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: metaTags })
-  }
-
+const readLines = (timed: TimedLine[]): runtime.Line[] => {
   const lines: runtime.Line[] = []
 
   for (const [index, item] of timed.entries()) {
@@ -285,6 +287,18 @@ export const parseLrc = (text: string): runtime.Lyric => {
     lines.push(readLine(item.text, item.start, next))
   }
 
+  return lines
+}
+
+const parseLrcText = (text: string): runtime.Lyric => {
+  const { timed, meta } = readTimedLines(text)
+  const metaTags = readMetaTags(meta)
+
+  if (!timed.length) {
+    return makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: metaTags })
+  }
+
+  const lines = readLines(timed)
   const wordTimed = lines.some((line) => (line.content?.words.length ?? 0) > 0)
 
   return makeLyric({
@@ -295,4 +309,31 @@ export const parseLrc = (text: string): runtime.Lyric => {
     languages: deriveLanguageUsages(lines),
     lines,
   })
+}
+
+/**
+ * Source order, empty timed lines, and missing word times are preserved for model validation.
+ *
+ * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
+ *
+ * `INVALID` means no readable timed lines; `VALID` does not imply model validation has passed.
+ */
+export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions = {}): runtime.Lyric => {
+  const source = readLrcContent(input) ?? { original: '' }
+  const lyric = parseLrcText(source.original)
+
+  if (lyric.status === LyricStatus.INVALID) {
+    return lyric
+  }
+
+  const translations = source.translations === undefined ? [] : readLines(readTimedLines(source.translations).timed)
+  const romans = source.romans === undefined ? [] : readLines(readTimedLines(source.romans).timed)
+
+  if (translations.length === 0 && romans.length === 0) {
+    return lyric
+  }
+
+  const lines = attachLineAnnotations(lyric.lines, { translations, romans }, { tolerance: options.annotationTolerance })
+
+  return { ...lyric, lines }
 }
