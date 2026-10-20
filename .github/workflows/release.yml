@@ -45,11 +45,9 @@ jobs:
           npm run check
           npm run build
 
-      # The token is the fallback for a registry that does not answer the OIDC request.
       - name: Publish to npm
         run: npm run release -- publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
 
       - name: Prepare release
