@@ -1,3 +1,21 @@
+## v0.2.0 (2026-10-21)
+
+### Feature
+
+- format-ttml
+  - add parser ([053e97f](https://github.com/gondola-lyrics/kit-node/commit/053e97f3f1912e03979c4925ce8bc52de9de2fd3))
+- utils
+  - support time values with offsets ([c5bacf3](https://github.com/gondola-lyrics/kit-node/commit/c5bacf3b76459fd6a0872bf7bce42f070eaa9ab0))
+  - add xml writer ([4d48827](https://github.com/gondola-lyrics/kit-node/commit/4d48827d4ae1494649030631b43aaacd1d813044))
+  - add xml reader ([d3aa9ac](https://github.com/gondola-lyrics/kit-node/commit/d3aa9acb73df6cfeff5bf8d5357d6666fc0af046))
+
+### Refactor
+
+- utils
+  - extract time helpers ([ec6aa69](https://github.com/gondola-lyrics/kit-node/commit/ec6aa69a9469d0e5dfd2e8e8219a16fbff880a14))
+  - split xml reader ([2bfa1ff](https://github.com/gondola-lyrics/kit-node/commit/2bfa1ff2460c1ebd3ccf32a52f25e90ea77f52e4))
+- return canonical lyrics and diagnostics from parsers ([9033396](https://github.com/gondola-lyrics/kit-node/commit/9033396c759bba5ff34ee88486b0d15c266470ab))
+
 ## v0.1.0 (2026-10-20)
 
 ### Feature
