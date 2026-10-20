@@ -1,32 +1,80 @@
 // A colon always separates units, so `1:14:514` means hours, minutes, and seconds, not minutes, seconds, and milliseconds.
-const TIME_PATTERN = /^(?:(?:(\d+):)?(\d+):)?(\d+)(?:\.(\d+))?$/
+const CLOCK_PATTERN = /^(?:(?:(\d+):)?(\d+):)?(\d+)(?:\.(\d+))?$/
+
+// `ms` has to be tried before `m`, so the longer unit wins.
+const OFFSET_PATTERN = /^(\d+(?:\.\d+)?)(ms|h|m|s)$/iu
 
 /**
- * Bare integers are excluded because formats may use them as millisecond counts or offsets.
- */
-export const isTime = (body: string) => {
-  const trimmed = body.trim()
-  return (trimmed.includes(':') || trimmed.includes('.')) && TIME_PATTERN.test(trimmed)
-}
-
-/**
- * Fractional seconds are padded or truncated to millisecond precision.
+ * Reads a clock value, where the fraction is padded or truncated to millisecond precision.
  *
- * Invalid clock syntax returns `undefined`; time bounds are left to model validation.
+ * `14.514` is fourteen seconds, not fourteen minutes: a colon, not a dot, introduces the larger units.
  */
-export const parseTime = (body: string) => {
-  if (!isTime(body)) {
+const parseClock = (value: string): number | undefined => {
+  // A dot alone is enough to make a number a clock reading, which is what keeps `500` out.
+  if (!value.includes(':') && !value.includes('.')) {
     return undefined
   }
 
-  const match = TIME_PATTERN.exec(body.trim()) as RegExpExecArray
+  const match = CLOCK_PATTERN.exec(value)
+  if (!match) {
+    return undefined
+  }
 
   const hour = Number(match[1] ?? 0)
   const minute = Number(match[2] ?? 0)
-  const second = Number(match[3])
+  const second = Number(match[3] ?? 0)
   const millisecond = Number((match[4] ?? '').padEnd(3, '0').slice(0, 3))
 
   return ((hour * 60 + minute) * 60 + second) * 1000 + millisecond
+}
+
+/**
+ * Reads an offset such as `1.5s`, `2m`, `500ms`, or `1h`.
+ */
+const parseOffset = (value: string): number | undefined => {
+  const match = OFFSET_PATTERN.exec(value)
+  if (!match) {
+    return undefined
+  }
+
+  const amount = Number(match[1])
+  if (!Number.isFinite(amount)) {
+    return undefined
+  }
+
+  switch ((match[2] ?? '').toLowerCase()) {
+    case 'h':
+      return Math.round(amount * 3600000)
+    case 'm':
+      return Math.round(amount * 60000)
+    case 'ms':
+      return Math.round(amount)
+    default:
+      return Math.round(amount * 1000)
+  }
+}
+
+/**
+ * Reports whether a value reads as a time.
+ */
+export const isTime = (body: string) => {
+  return parseTime(body) !== undefined
+}
+
+/**
+ * Reads a time value into milliseconds.
+ *
+ * A clock reading accepts `ss.fraction`, `mm:ss.fraction`, and `hh:mm:ss.fraction`.
+ * An offset accepts a number with an `h`, `m`, `s`, or `ms` suffix.
+ * A bare number returns `undefined`, and so does anything else.
+ */
+export const parseTime = (body: string): number | undefined => {
+  const trimmed = body.trim()
+  if (trimmed === '') {
+    return undefined
+  }
+
+  return parseOffset(trimmed) ?? parseClock(trimmed)
 }
 
 /**
