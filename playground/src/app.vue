@@ -38,6 +38,16 @@
               >
                 {{ t('settings.lrc') }}
               </button>
+              <button
+                id="mode-ttml"
+                type="button"
+                role="tab"
+                :aria-selected="form.mode === 'ttml'"
+                :aria-controls="'input-ttml'"
+                @click="form.mode = 'ttml'"
+              >
+                {{ t('settings.ttml') }}
+              </button>
             </div>
 
             <div v-if="form.mode === 'auto'" id="input-auto" role="tabpanel" aria-labelledby="mode-auto" :class="$style.editorShell">
@@ -53,7 +63,7 @@
               ></textarea>
             </div>
 
-            <div v-else id="input-lrc" role="tabpanel" aria-labelledby="mode-lrc" :class="$style.editorShell">
+            <div v-else-if="form.mode === 'lrc'" id="input-lrc" role="tabpanel" aria-labelledby="mode-lrc" :class="$style.editorShell">
               <label :class="$style.visuallyHidden" for="lyrics-input-lrc">{{ t('input.label') }}</label>
               <textarea
                 id="lyrics-input-lrc"
@@ -91,6 +101,19 @@
                   ></textarea>
                 </div>
               </div>
+            </div>
+
+            <div v-else id="input-ttml" role="tabpanel" aria-labelledby="mode-ttml" :class="$style.editorShell">
+              <label :class="$style.visuallyHidden" for="lyrics-input-ttml">{{ t('input.label') }}</label>
+              <textarea
+                id="lyrics-input-ttml"
+                v-model="form.ttmlContent"
+                :class="$style.editor"
+                :readonly="parsing"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+              ></textarea>
             </div>
 
             <p v-if="!storageAvailable" :class="$style.warning">{{ t('input.storage') }}</p>
@@ -635,8 +658,10 @@ onMounted(() => {
 }
 
 .resultContent {
+  --result-pad: 14px;
+
   min-width: 0;
-  padding: 24px 14px 18px;
+  padding: 24px var(--result-pad) 18px;
 }
 
 .jsonView {
@@ -719,7 +744,9 @@ onMounted(() => {
   }
 
   .resultContent {
-    padding: 18px 16px;
+    --result-pad: 16px;
+
+    padding: 18px var(--result-pad);
   }
 }
 
@@ -778,7 +805,9 @@ onMounted(() => {
   }
 
   .resultContent {
-    padding: 16px 12px;
+    --result-pad: 12px;
+
+    padding: 16px var(--result-pad);
   }
 
   .jsonView {

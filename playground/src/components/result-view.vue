@@ -6,7 +6,7 @@
         <template v-for="(row, index) in metadata" :key="index">
           <dt :class="{ [$style.raw]: row.raw }">{{ row.label }}</dt>
           <dd>
-            <span v-for="(value, valueIndex) in row.values" :key="valueIndex" :class="$style.metaValue" :title="value.language">{{
+            <span v-for="(value, valueIndex) in row.values" :key="valueIndex" :class="[$style.chip, $style.metaValue]" :title="value.language">{{
               value.text
             }}</span>
           </dd>
@@ -132,8 +132,10 @@ const performers = computed(() => {
   gap: 26px;
   min-width: 0;
 
+  /* Bleed through the content padding so each rule meets the card border. */
   section + section {
-    padding-top: 24px;
+    margin: 0 calc(var(--result-pad, 14px) * -1);
+    padding: 24px var(--result-pad, 14px) 0;
     border-top: 1px solid var(--line);
   }
 
@@ -170,7 +172,8 @@ const performers = computed(() => {
   dd {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 14px;
+    align-items: flex-start;
+    gap: 7px;
     min-width: 0;
     margin: 0;
   }
@@ -179,7 +182,6 @@ const performers = computed(() => {
 .metaValue {
   max-width: 100%;
   color: var(--text);
-  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -242,8 +244,8 @@ const performers = computed(() => {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr);
     gap: 12px;
-    margin: 0 -14px;
-    padding: 16px 14px;
+    margin: 0 calc(var(--result-pad, 14px) * -1);
+    padding: 16px var(--result-pad, 14px);
 
     + li {
       border-top: 1px solid var(--line);
@@ -269,8 +271,7 @@ const performers = computed(() => {
   .lines > li {
     grid-template-columns: 24px minmax(0, 1fr);
     gap: 6px;
-    margin: 0 -12px;
-    padding: 14px 12px;
+    padding: 14px var(--result-pad, 14px);
   }
 }
 </style>

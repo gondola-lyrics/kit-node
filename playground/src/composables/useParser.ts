@@ -4,13 +4,14 @@ import type { MessageKey } from './useI18n'
 import { encode } from '@gondola-lyrics/model/runtime'
 import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
-import { generate, parse, parseLrc } from '@gondola-lyrics/kit'
+import { generate, parse, parseLrc, parseTtml } from '@gondola-lyrics/kit'
 
 interface FormState {
-  mode: 'auto' | 'lrc'
+  mode: 'auto' | 'lrc' | 'ttml'
   /** Each mode keeps its own text, so switching never carries one format's source into another. */
   autoContent: string
   lrcContent: string
+  ttmlContent: string
   /** LRC keeps translations and romanizations in their own files, so they get their own inputs. */
   translations: string
   romans: string
@@ -36,20 +37,21 @@ const readText = (saved: Record<string, unknown>, key: string): string => {
 }
 
 const readForm = (): FormState => {
-  const defaults: FormState = { mode: 'auto', autoContent: '', lrcContent: '', translations: '', romans: '' }
+  const defaults: FormState = { mode: 'auto', autoContent: '', lrcContent: '', ttmlContent: '', translations: '', romans: '' }
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return defaults
     }
     const saved = raw as Record<string, unknown>
-    const mode = saved.mode === 'lrc' ? 'lrc' : 'auto'
+    const mode = saved.mode === 'lrc' || saved.mode === 'ttml' ? saved.mode : 'auto'
     // An older entry stored one `content` field; it belongs to whichever mode was selected then.
     const legacy = readText(saved, 'content')
     return {
       mode,
       autoContent: readText(saved, 'autoContent') || (mode === 'auto' ? legacy : ''),
       lrcContent: readText(saved, 'lrcContent') || (mode === 'lrc' ? legacy : ''),
+      ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
     }
@@ -124,7 +126,7 @@ export const useParser = () => {
     resetResult()
 
     // Only the selected mode's source is parsed, and its annotation tracks travel with it.
-    const content = input.mode === 'lrc' ? input.lrcContent : input.autoContent
+    const content = input.mode === 'lrc' ? input.lrcContent : input.mode === 'ttml' ? input.ttmlContent : input.autoContent
     if (!content.trim()) {
       return
     }
@@ -143,7 +145,9 @@ export const useParser = () => {
               translations: input.translations.trim() ? input.translations : undefined,
               romans: input.romans.trim() ? input.romans : undefined,
             })
-          : parse(input.autoContent)
+          : input.mode === 'ttml'
+            ? parseTtml(input.ttmlContent)
+            : parse(input.autoContent)
       if (!parsed) {
         error.value = 'error.unrecognized'
         return
@@ -162,7 +166,7 @@ export const useParser = () => {
         lyric,
         diagnostics,
         elapsed: performance.now() - start,
-        inputBytes: encoder.encode(input.mode === 'lrc' ? input.lrcContent + input.translations + input.romans : input.autoContent).byteLength,
+        inputBytes: encoder.encode(content + (input.mode === 'lrc' ? input.translations + input.romans : '')).byteLength,
         encodedBytes,
         encodingError,
       }
