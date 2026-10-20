@@ -24,8 +24,8 @@ export interface XmlWriteOptions {
   /**
    * Indent elements by nesting depth; defaults to `false`.
    *
-   * The inserted whitespace becomes text when the output is parsed again, so only turn this on for
-   * output no one reads back as lyrics.
+   * The inserted whitespace becomes text when the output is parsed again.
+   * Turn this on only for output no one reads back as lyrics.
    */
   indent?: boolean
   /** One indentation level; defaults to two spaces. */
