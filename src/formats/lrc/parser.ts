@@ -1,4 +1,5 @@
 import type { runtime } from '@gondola-lyrics/model'
+import type { ParseResult } from '../result'
 import type { LrcContent } from './common'
 
 import {
@@ -19,6 +20,7 @@ import {
 
 import { attachLineAnnotations, isTime, parseTime } from '@root/utils'
 
+import { finalizeLyric } from '../result'
 import { FORMAT, readLrcContent } from './common'
 import { META_PATTERN, TAG_PATTERN, parseWordTime, splitWordTags } from './utils'
 
@@ -316,24 +318,23 @@ const parseLrcText = (text: string): runtime.Lyric => {
  *
  * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
  *
- * `INVALID` means no readable timed lines; `VALID` does not imply model validation has passed.
+ * `INVALID` means no readable timed lines; the returned diagnostics carry whatever the canonical tree breaks.
  */
-export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions = {}): runtime.Lyric => {
+export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions = {}): ParseResult => {
   const source = readLrcContent(input) ?? { original: '' }
   const lyric = parseLrcText(source.original)
 
   if (lyric.status === LyricStatus.INVALID) {
-    return lyric
+    return finalizeLyric(lyric)
   }
 
   const translations = source.translations === undefined ? [] : readLines(readTimedLines(source.translations).timed)
   const romans = source.romans === undefined ? [] : readLines(readTimedLines(source.romans).timed)
-
   if (translations.length === 0 && romans.length === 0) {
-    return lyric
+    return finalizeLyric(lyric)
   }
 
   const lines = attachLineAnnotations(lyric.lines, { translations, romans }, { tolerance: options.annotationTolerance })
 
-  return { ...lyric, lines }
+  return finalizeLyric({ ...lyric, lines })
 }

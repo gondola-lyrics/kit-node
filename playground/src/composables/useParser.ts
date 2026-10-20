@@ -1,7 +1,7 @@
 import type { Diagnostic, Lyric } from '@gondola-lyrics/model/runtime'
 import type { MessageKey } from './useI18n'
 
-import { canonicalizeLyric, encode, validateLyric } from '@gondola-lyrics/model/runtime'
+import { encode } from '@gondola-lyrics/model/runtime'
 import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
 import { generate, parse, parseLrc } from '@gondola-lyrics/kit'
@@ -148,8 +148,8 @@ export const useParser = () => {
         error.value = 'error.unrecognized'
         return
       }
-      const lyric = canonicalizeLyric(parsed)
-      const diagnostics = validateLyric(lyric)
+      // The parser already canonicalized and validated, so the playground only inspects the result.
+      const { lyric, diagnostics } = parsed
       let encodedBytes: number | null = null
       let encodingError = ''
       try {

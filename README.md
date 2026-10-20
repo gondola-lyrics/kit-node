@@ -20,7 +20,7 @@ npm install @gondola-lyrics/kit
 > This package is ESM-only.
 > In your TS config, use `module: node20` / `module: nodenext` / `moduleResolution: bundler`.
 
-Parsing returns a `runtime.Lyric`, so the result is ready to validate and hand to a player without a second conversion step.
+Parsing returns a canonical `runtime.Lyric` together with the diagnostics it produced, so the result is ready to hand to a player without a second conversion step.
 
 ### Parse
 
@@ -28,14 +28,15 @@ Parsing returns a `runtime.Lyric`, so the result is ready to validate and hand t
 import { parse, parseLrc } from '@gondola-lyrics/kit'
 
 const content = `[00:01.00]Like the first time tangled by the fishing line`
-const lyric = parse(content)
+const parsed = parse(content)
 
-lyric?.format // => 'lrc'
-lyric?.lines[0]?.time?.start // => 1000
+parsed?.lyric.format // => 'lrc'
+parsed?.lyric.lines[0]?.time?.start // => 1000
+parsed?.diagnostics // => []
 
 // `parse` recognizes the format and returns `null` when it cannot.
 // `parseLrc` takes a known format and never returns `null`, so an unreadable source only carries `status: INVALID`.
-parseLrc('no timestamps here').status // => LyricStatus.INVALID
+parseLrc('no timestamps here').lyric.status // => LyricStatus.INVALID
 
 // LRC keeps translations and romanizations in separate files, attached here by timestamp.
 const annotated = parseLrc({
@@ -47,8 +48,8 @@ const annotated = parseLrc({
 [00:03.00]tanguru do bai za rain`,
 })
 
-annotated.lines[0]?.annotation?.translations[0].text // => '就像第一次'
-annotated.lines[0]?.annotation?.romans[0].text // => 'raiku za fasuto taimu'
+annotated.lyric.lines[0]?.annotation?.translations[0].text // => '就像第一次'
+annotated.lyric.lines[0]?.annotation?.romans[0].text // => 'raiku za fasuto taimu'
 
 // An exact timestamp match is assigned before any fuzzy one, and rows matching no line are dropped.
 // A drifting track attaches within a tolerance, where the nearest unclaimed line wins.
@@ -59,9 +60,11 @@ const drifted = {
 [00:03.20]被渔线缠住那样`,
 }
 
-parseLrc(drifted).lines[0]?.annotation // => undefined
-parseLrc(drifted, { annotationTolerance: 500 }).lines[0]?.annotation?.translations[0].text // => '就像第一次'
+parseLrc(drifted).lyric.lines[0]?.annotation // => undefined
+parseLrc(drifted, { annotationTolerance: 500 }).lyric.lines[0]?.annotation?.translations[0].text // => '就像第一次'
 ```
+
+Every parser canonicalizes its lyric and validates the result before returning, so `lyric` is already in canonical order and `diagnostics` is exactly what `@gondola-lyrics/model` reports for it.
 
 ### Generate
 
@@ -70,7 +73,7 @@ parseLrc(drifted, { annotationTolerance: 500 }).lines[0]?.annotation?.translatio
 ```ts
 import { generate, parseLrc } from '@gondola-lyrics/kit'
 
-const lyric = parseLrc('[00:01.00]Like the first time')
+const { lyric } = parseLrc('[00:01.00]Like the first time')
 
 // Separate tracks come back as separate fields, so the result parses again unchanged.
 const { original, translations, romans } = generate(lyric, 'lrc')
@@ -93,14 +96,15 @@ Detection reads only the original text. It answers whether the source is recogni
 
 ### Validation
 
-The kit does not report diagnostics of its own. Parsing keeps the source as written, and `@gondola-lyrics/model` decides what is valid.
+The kit does not invent diagnostics. It canonicalizes the lyric and hands back exactly what `@gondola-lyrics/model` reports for it.
 
 ```ts
-import { canonicalizeLyric, validateLyric } from '@gondola-lyrics/model/runtime'
+const { lyric, diagnostics } = parseLrc(source)
 
-const lyric = parseLrc(source)
+// The same list, computed by the kit on the way out.
+import { validateLyric } from '@gondola-lyrics/model/runtime'
 
-validateLyric(canonicalizeLyric(lyric)) // => []
+validateLyric(lyric) // deep-equals `diagnostics`
 ```
 
 ### Entries
