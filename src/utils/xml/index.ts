@@ -14,3 +14,6 @@ export {
   groupXmlElements,
   hasXmlChildElement,
 } from './utils'
+
+export { serializeXml } from './writer'
+export type { XmlWriteOptions } from './writer'
