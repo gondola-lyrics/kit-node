@@ -177,21 +177,29 @@ const renderTimeAttributes = (time: runtime.TimeRange | undefined, offset: numbe
 }
 
 /**
- * Leaves an undeclared language absent from the XML attributes.
+ * Clears inherited language when the model leaves an item's language unspecified.
  */
-const renderLanguage = (language: string | undefined): Attributes => {
-  return language === undefined ? [] : [['xml:lang', language]]
+const renderLanguage = (language: string | undefined, inherited?: string): Attributes => {
+  if (language !== undefined) {
+    return [['xml:lang', language]]
+  }
+
+  return inherited === undefined ? [] : [['xml:lang', '']]
+}
+
+const getLineLanguage = (line: SungLine): string | undefined => {
+  return line.languages.length === 1 ? line.languages[0] : undefined
 }
 
 /**
  * Writes separators as text and resolves inherited ruby timing through the model.
  */
-const renderWord = (word: runtime.Word, context: RenderContext): XmlNode => {
+const renderWord = (word: runtime.Word, context: RenderContext, language?: string): XmlNode => {
   if (word.type === WordType.SPACE) {
     return createXmlText(word.text)
   }
 
-  const attributes = [...renderTimeAttributes(word.time, context.offset), ...renderLanguage(word.language)]
+  const attributes = [...renderTimeAttributes(word.time, context.offset), ...renderLanguage(word.language, language)]
   const ruby = context.profile === 'amll' ? word.annotation?.rubies[0] : undefined
   if (ruby === undefined) {
     return createXmlElement('span', attributes, [createXmlText(word.text)])
@@ -215,7 +223,7 @@ const renderWord = (word: runtime.Word, context: RenderContext): XmlNode => {
         [
           ['tts:ruby', RUBY_TEXT_CONTAINER],
           ...renderTimeAttributes(resolveAnnotationItemTime(ruby, word), context.offset),
-          ...renderLanguage(ruby.language),
+          ...renderLanguage(ruby.language, word.language),
         ],
         tokens,
       ),
@@ -226,7 +234,8 @@ const renderWord = (word: runtime.Word, context: RenderContext): XmlNode => {
 /**
  * Retains the model's choice between whole text and timed words.
  */
-const renderContent = (content: runtime.LineContent | undefined, context: RenderContext): XmlNode[] => {
+const renderContent = (line: SungLine, context: RenderContext): XmlNode[] => {
+  const content = line.content
   if (content === undefined) {
     throw new Error('TTML sung lines require content')
   }
@@ -235,20 +244,20 @@ const renderContent = (content: runtime.LineContent | undefined, context: Render
   }
 
   return content.words.map((word) => {
-    return renderWord(word, context)
+    return renderWord(word, context, getLineLanguage(line))
   })
 }
 
 /**
  * Keeps annotations outside the sung word stream.
  */
-const renderInlineAnnotations = (annotation: runtime.LineAnnotation | undefined): XmlElement[] => {
+const renderInlineAnnotations = (annotation: runtime.LineAnnotation | undefined, language?: string): XmlElement[] => {
   const nodes: XmlElement[] = []
   for (const item of annotation?.translations ?? []) {
-    nodes.push(createXmlElement('span', [['ttm:role', ROLE_TRANSLATION], ...renderLanguage(item.language)], [createXmlText(item.text)]))
+    nodes.push(createXmlElement('span', [['ttm:role', ROLE_TRANSLATION], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
   for (const item of annotation?.romans ?? []) {
-    nodes.push(createXmlElement('span', [['ttm:role', ROLE_ROMAN], ...renderLanguage(item.language)], [createXmlText(item.text)]))
+    nodes.push(createXmlElement('span', [['ttm:role', ROLE_ROMAN], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
   return nodes
 }
@@ -261,6 +270,7 @@ const renderLineAttributes = (line: SungLine, context: RenderContext): Attribute
     ...renderTimeAttributes(line.time, context.offset),
     ['itunes:key', context.keys.get(line)!],
     ['xml:space', 'preserve'],
+    ['xml:lang', getLineLanguage(line) ?? ''],
   ]
   const lead = line.agents[0]
   if (lead !== undefined) {
@@ -281,9 +291,9 @@ const createLyricElement = (name: string, attributes: Attributes, children: XmlN
 }
 
 const renderBackground = (line: runtime.LineBackground, context: RenderContext) => {
-  const children = renderContent(line.content, context)
+  const children = renderContent(line, context)
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line.annotation))
+    children.push(...renderInlineAnnotations(line.annotation, getLineLanguage(line)))
   }
 
   return createXmlElement('span', [['ttm:role', ROLE_BACKGROUND], ...renderLineAttributes(line, context)], children)
@@ -301,9 +311,9 @@ const renderLine = (line: runtime.Line, context: RenderContext) => {
     }
   }
 
-  const children = [...before, ...renderContent(line.content, context), ...after]
+  const children = [...before, ...renderContent(line, context), ...after]
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line.annotation))
+    children.push(...renderInlineAnnotations(line.annotation, getLineLanguage(line)))
   }
   return createLyricElement('p', renderLineAttributes(line, context), children)
 }
@@ -464,7 +474,7 @@ const renderMetadata = (lyric: runtime.Lyric, lines: runtime.Line[], context: Re
     metadata.push(createXmlElement('iTunesMetadata', [['xmlns', NAMESPACE_ITUNES_METADATA]], itunes))
   }
 
-  return createXmlElement('metadata', [], metadata)
+  return createXmlElement('metadata', renderLanguage(undefined, lyric.meta?.language), metadata)
 }
 
 const renderRootAttributes = (lyric: runtime.Lyric, profile: TtmlProfile): Attributes => {
