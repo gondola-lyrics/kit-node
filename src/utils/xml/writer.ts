@@ -126,6 +126,16 @@ const escapeXmlAttribute = (value: string, chunks: string[]): void => {
       escaped = '&#10;'
     } else if (code === CARRIAGE_RETURN) {
       escaped = '&#13;'
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const low = index + 1 < length ? value.charCodeAt(index + 1) : 0
+      if (low < 0xdc00 || low > 0xdfff) {
+        escaped = REPLACEMENT_CHARACTER
+      } else {
+        index += 1
+        continue
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      escaped = REPLACEMENT_CHARACTER
     } else if (!isAllowedCodePoint(code)) {
       escaped = REPLACEMENT_CHARACTER
     }
