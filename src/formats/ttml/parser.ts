@@ -379,6 +379,31 @@ const readWords = (element: XmlElement): { words: WordDraft[]; wordLevel: boolea
   return { words, wordLevel }
 }
 
+const readInlineAnnotations = (element: XmlElement): Pick<LineDraft, 'translations' | 'romans'> => {
+  const translations: AnnotationDraft[] = []
+  const romans: AnnotationDraft[] = []
+
+  for (const span of getXmlChildElements(element, 'span')) {
+    const role = getXmlAttribute(span, 'role')
+    if (role !== ROLE_TRANSLATION && role !== ROLE_ROMAN) {
+      continue
+    }
+    const text = getXmlTextContent(span).trim()
+    if (!text) {
+      continue
+    }
+
+    const item = { language: lowerTag(getXmlAttribute(span, 'lang')), text }
+    if (role === ROLE_TRANSLATION) {
+      translations.push(item)
+    } else {
+      romans.push(item)
+    }
+  }
+
+  return { translations, romans }
+}
+
 /**
  * Reads one paragraph, pulling its inline annotations and background lines out of the word stream.
  */
@@ -413,31 +438,17 @@ const readLine = (element: XmlElement): LineDraft | undefined => {
   const read = readWords(element)
   draft.words = read.words
   draft.wordLevel = read.wordLevel
+  const annotations = readInlineAnnotations(element)
+  draft.translations = annotations.translations
+  draft.romans = annotations.romans
 
   for (const span of getXmlChildElements(element, 'span')) {
     const role = getXmlAttribute(span, 'role')
-    if (!role) {
-      continue
-    }
-
     if (role === ROLE_BACKGROUND) {
       const background = readBackground(span)
       if (background) {
         draft.backgrounds.push(background)
       }
-      continue
-    }
-
-    const text = getXmlTextContent(span).trim()
-    if (!text) {
-      continue
-    }
-
-    const item = { language: lowerTag(getXmlAttribute(span, 'lang')), text }
-    if (role === ROLE_TRANSLATION) {
-      draft.translations.push(item)
-    } else if (role === ROLE_ROMAN) {
-      draft.romans.push(item)
     }
   }
 
@@ -477,11 +488,25 @@ const readBackground = (element: XmlElement): LineDraft | undefined => {
     agentId: getXmlAttribute(element, 'agent'),
     key: getXmlAttribute(element, 'key'),
     words: read.words,
-    translations: [],
-    romans: [],
+    ...readInlineAnnotations(element),
     backgrounds: [],
     wordLevel: read.wordLevel,
   }
+}
+
+const buildContent = (draft: LineDraft): runtime.LineContent => {
+  if (draft.wordLevel) {
+    return makeLineContentWords(buildWords(draft))
+  }
+
+  return makeLineContentText(
+    draft.words
+      .map((word) => {
+        return word.text
+      })
+      .join('')
+      .trim(),
+  )
 }
 
 /**
@@ -492,7 +517,7 @@ const buildBackground = (draft: LineDraft): runtime.LineBackground => {
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
     agents: draft.agentId === undefined ? [] : [draft.agentId],
-    content: makeLineContentWords(buildWords(draft)),
+    content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
   })
 }
@@ -501,22 +526,11 @@ const buildBackground = (draft: LineDraft): runtime.LineBackground => {
  * Builds one normal line, keeping plain text whole unless the source timed its words.
  */
 const buildLine = (draft: LineDraft): runtime.Line => {
-  const content = draft.wordLevel
-    ? makeLineContentWords(buildWords(draft))
-    : makeLineContentText(
-        draft.words
-          .map((word) => {
-            return word.text
-          })
-          .join('')
-          .trim(),
-      )
-
   return makeLineNormal({
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
     agents: draft.agentId === undefined ? [] : [draft.agentId],
-    content,
+    content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
     backgrounds: draft.backgrounds.map(buildBackground),
   })
@@ -752,7 +766,12 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
 
   const lines = drafts.map(buildLine)
   const wordLevel = drafts.some((draft) => {
-    return draft.wordLevel
+    return (
+      draft.wordLevel ||
+      draft.backgrounds.some((background) => {
+        return background.wordLevel
+      })
+    )
   })
 
   return finalizeLyric(
