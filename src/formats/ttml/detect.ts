@@ -1,4 +1,4 @@
-import { parseXml, XmlNodeType } from '@root/utils'
+import { XmlNodeType, parseXml } from '@root/utils'
 
 import { AMLL_HINT_PATTERN, ITUNES_HINT_PATTERN, readTtmlContent } from './common'
 
@@ -14,12 +14,12 @@ export const detectTtml = (input: unknown) => {
     return false
   }
 
-  if (AMLL_HINT_PATTERN.test(content.original) || ITUNES_HINT_PATTERN.test(content.original)) {
+  if (AMLL_HINT_PATTERN.test(content) || ITUNES_HINT_PATTERN.test(content)) {
     return true
   }
 
   // A document without a hint still counts when its root is a tt element.
-  const root = parseXml(content.original)
+  const root = parseXml(content)
   if (!root) {
     return false
   }

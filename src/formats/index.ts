@@ -2,17 +2,17 @@ import type { runtime } from '@gondola-lyrics/model'
 import type { LyricFormat } from './format'
 import type { LrcGenerateOptions, LrcGenerateResult, LrcParseInput, LrcParseOptions } from './lrc'
 import type { ParseResult } from './result'
-import type { TtmlContent, TtmlParseOptions } from './ttml'
+import type { TtmlGenerateOptions, TtmlGenerateResult, TtmlParseOptions } from './ttml'
 
 import { detectLrc, generateLrc, parseLrc } from './lrc'
-import { detectTtml, parseTtml } from './ttml'
+import { detectTtml, generateTtml, parseTtml } from './ttml'
 
 /**
  * Recognition reads only the original text; the annotation tracks never decide the format.
  *
  * Unrecognized text returns `undefined`.
  */
-export const detectFormat = (input: unknown) => {
+export const detectFormat = (input: unknown): LyricFormat | undefined => {
   if (detectLrc(input)) {
     return 'lrc'
   }
@@ -37,22 +37,43 @@ export const parse = (input: unknown, options: LrcParseOptions & TtmlParseOption
     case 'lrc':
       return parseLrc(input as string | LrcParseInput, options)
     case 'ttml':
-      return parseTtml(input as string | TtmlContent, options)
+      return parseTtml(input as string, options)
   }
+}
+
+interface GenerateOptions {
+  lrc: LrcGenerateOptions
+  ttml: TtmlGenerateOptions
+}
+
+interface GenerateResults {
+  lrc: LrcGenerateResult
+  ttml: TtmlGenerateResult
+}
+
+const GENERATORS: {
+  [Target in LyricFormat]: (lyric: runtime.Lyric, options: GenerateOptions[Target]) => GenerateResults[Target]
+} = {
+  lrc: generateLrc,
+  ttml: generateTtml,
 }
 
 /**
  * Generates text in the requested format, which need not match `lyric.format`.
  *
- * A format without a writer has no branch here, so adding one to `LyricFormat` makes this fail to compile.
+ * The writer map pairs each format's options with its result and requires a writer for every supported format.
+ * An unknown target returns `null`.
  */
-export const generate = (lyric: runtime.Lyric, target: LyricFormat, options: LrcGenerateOptions = {}): LrcGenerateResult => {
-  switch (target) {
-    case 'lrc':
-      return generateLrc(lyric, options)
-    case 'ttml':
-      throw new Error('ttml generation is not implemented yet')
+export const generate = <Target extends LyricFormat>(
+  lyric: runtime.Lyric,
+  target: Target,
+  options: GenerateOptions[Target] = {},
+): GenerateResults[Target] | null => {
+  if (!Object.hasOwn(GENERATORS, target)) {
+    return null
   }
+
+  return GENERATORS[target](lyric, options)
 }
 
 export type { ParseResult } from './result'

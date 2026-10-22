@@ -1,7 +1,7 @@
 import type { runtime } from '@gondola-lyrics/model'
 import type { XmlElement } from '@root/utils'
 import type { ParseResult } from '../result'
-import type { TtmlContent } from './common'
+import type { TtmlProfile } from './common'
 
 import {
   AgentType,
@@ -45,7 +45,7 @@ import {
 } from '@root/utils'
 
 import { finalizeLyric } from '../result'
-import { FORMAT, readTtmlContent, readTtmlProfile } from './common'
+import { FORMAT, AMLL_HINT_PATTERN, readTtmlContent } from './common'
 import {
   ROLE_BACKGROUND,
   ROLE_ROMAN,
@@ -57,11 +57,6 @@ import {
   TIMING_LINE,
   TIMING_WORD,
 } from './utils'
-
-export interface TtmlParseOptions {
-  /** Language tag the lyric declares; the document's own `xml:lang` wins when it states one. */
-  language?: string
-}
 
 interface TokenDraft {
   start: number
@@ -100,9 +95,17 @@ interface LineDraft {
   wordLevel: boolean
 }
 
-/**
- * Reads the span time range, which a word needs both ends of to be sung.
- */
+export type TtmlParseInput = string
+
+export interface TtmlParseOptions {
+  /** Language tag the lyric declares; the document's own `xml:lang` wins when it states one. */
+  language?: string
+}
+
+const readTtmlProfile = (source: string): TtmlProfile => {
+  return AMLL_HINT_PATTERN.test(source) ? 'amll' : 'itunes'
+}
+
 const readSpanTime = (element: XmlElement) => {
   const begin = getXmlAttribute(element, 'begin')
   const end = getXmlAttribute(element, 'end')
@@ -119,9 +122,6 @@ const readSpanTime = (element: XmlElement) => {
   return { start, end: finish }
 }
 
-/**
- * Reads the line time range, which may leave its end open for the next line to supply.
- */
 const readLineTime = (element: XmlElement) => {
   const begin = getXmlAttribute(element, 'begin')
   if (!begin) {
@@ -138,10 +138,30 @@ const readLineTime = (element: XmlElement) => {
   return { start, end: end ? parseTime(end) : undefined }
 }
 
+const readAgentType = (raw: string | undefined): { type: AgentType; raw: string | undefined } => {
+  switch (raw) {
+    case 'person':
+      return { type: AgentType.PERSON, raw: undefined }
+    case 'group':
+      return { type: AgentType.GROUP, raw: undefined }
+    default:
+      return { type: AgentType.OTHER, raw: raw ?? 'other' }
+  }
+}
+
+const readDeclaredTiming = (root: XmlElement): Timing | undefined => {
+  switch (getXmlQualifiedAttribute(root, 'itunes:timing')) {
+    case TIMING_WORD:
+      return Timing.WORD
+    case TIMING_LINE:
+      return Timing.LINE
+    default:
+      return undefined
+  }
+}
+
 /**
- * Turns a run of text into drafts, keeping the separators as space words.
- *
- * A span's own trailing space is part of the word it follows, so leading and trailing runs both survive.
+ * Preserves the parser's whitespace segmentation when turning text into word drafts.
  */
 const splitWords = (text: string): WordDraft[] => {
   const words: WordDraft[] = []
@@ -153,6 +173,111 @@ const splitWords = (text: string): WordDraft[] => {
   }
 
   return words
+}
+
+/**
+ * Distinguishes indentation runs from separators using the parser's existing rule.
+ */
+const isFormattingWhitespace = (text: string) => {
+  return text.trim() === '' && text.includes('\n')
+}
+
+/**
+ * Builds words from source drafts without deriving missing timestamps.
+ */
+const buildWords = (draft: LineDraft): runtime.Word[] => {
+  const words: runtime.Word[] = []
+
+  for (const word of draft.words) {
+    if (word.space) {
+      words.push(makeWordSpace({ text: word.text }))
+      continue
+    }
+
+    const time = word.start === undefined ? undefined : makeTimeRange({ start: word.start, end: word.end })
+    if (word.rubies.length === 0) {
+      words.push(makeWordNormal({ text: word.text, time }))
+      continue
+    }
+
+    const rubies = word.rubies.map((ruby) => {
+      return makeWordAnnotationRuby({
+        time: makeTimeRange({ start: ruby.start, end: ruby.end }),
+        tokens: ruby.tokens.map((token) => {
+          return makeWordAnnotationToken({ text: token.text, time: makeTimeRange({ start: token.start, end: token.end }) })
+        }),
+      })
+    })
+
+    words.push(makeWordNormal({ text: word.text, time, annotation: makeWordAnnotation({ rubies }) }))
+  }
+
+  return words
+}
+
+/**
+ * Builds only annotations explicitly present in the source drafts.
+ */
+const buildLineAnnotation = (draft: LineDraft): runtime.LineAnnotation | undefined => {
+  if (draft.translations.length === 0 && draft.romans.length === 0) {
+    return undefined
+  }
+
+  return makeLineAnnotation({
+    translations: draft.translations.map((item) => {
+      return makeLineAnnotationTranslation({ text: item.text, language: item.language })
+    }),
+    romans: draft.romans.map((item) => {
+      return makeLineAnnotationRoman({ text: item.text, language: item.language })
+    }),
+  })
+}
+
+/**
+ * Separates head annotation text from its background references.
+ */
+const splitBackgroundText = (element: XmlElement) => {
+  let main = ''
+  const backgrounds: { text: string; key: string | undefined }[] = []
+
+  for (const child of element.children) {
+    if (child.nodeType === XmlNodeType.element && child.localName === 'span' && getXmlAttribute(child, 'role') === ROLE_BACKGROUND) {
+      backgrounds.push({ text: getXmlTextContent(child).trim(), key: getXmlAttribute(child, 'for') })
+      continue
+    }
+    main += getXmlTextContent(child)
+  }
+
+  return { main: main.trim(), backgrounds }
+}
+
+/**
+ * Finds paragraphs in document order, including nested divs.
+ */
+const findParagraphs = (body: XmlElement): XmlElement[] => {
+  const result: XmlElement[] = []
+  const stack: XmlElement[] = [body]
+
+  while (stack.length > 0) {
+    const element = stack.pop()
+    if (!element) {
+      continue
+    }
+    if (element.localName === 'p') {
+      result.push(element)
+      continue
+    }
+
+    const children = element.children
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index]
+      if (child && child.nodeType === XmlNodeType.element) {
+        stack.push(child)
+      }
+    }
+  }
+
+  return result
 }
 
 /**
@@ -198,13 +323,6 @@ const readRuby = (container: XmlElement): WordDraft | undefined => {
     end: last.end,
     rubies: [{ start: first.start, end: last.end, tokens }],
   }
-}
-
-/**
- * Reports whether a text run holds nothing but formatting whitespace, which only a pretty-printed source produces.
- */
-const isFormattingWhitespace = (text: string) => {
-  return text.trim() === '' && text.includes('\n')
 }
 
 /**
@@ -367,57 +485,6 @@ const readBackground = (element: XmlElement): LineDraft | undefined => {
 }
 
 /**
- * Builds the model words of one draft line.
- */
-const buildWords = (draft: LineDraft): runtime.Word[] => {
-  const words: runtime.Word[] = []
-
-  for (const word of draft.words) {
-    if (word.space) {
-      words.push(makeWordSpace({ text: word.text }))
-      continue
-    }
-
-    const time = word.start === undefined ? undefined : makeTimeRange({ start: word.start, end: word.end })
-    if (word.rubies.length === 0) {
-      words.push(makeWordNormal({ text: word.text, time }))
-      continue
-    }
-
-    const rubies = word.rubies.map((ruby) => {
-      return makeWordAnnotationRuby({
-        time: makeTimeRange({ start: ruby.start, end: ruby.end }),
-        tokens: ruby.tokens.map((token) => {
-          return makeWordAnnotationToken({ text: token.text, time: makeTimeRange({ start: token.start, end: token.end }) })
-        }),
-      })
-    })
-
-    words.push(makeWordNormal({ text: word.text, time, annotation: makeWordAnnotation({ rubies }) }))
-  }
-
-  return words
-}
-
-/**
- * Builds a line's annotation container, which the model only keeps when it holds something.
- */
-const buildLineAnnotation = (draft: LineDraft): runtime.LineAnnotation | undefined => {
-  if (draft.translations.length === 0 && draft.romans.length === 0) {
-    return undefined
-  }
-
-  return makeLineAnnotation({
-    translations: draft.translations.map((item) => {
-      return makeLineAnnotationTranslation({ text: item.text, language: item.language })
-    }),
-    romans: draft.romans.map((item) => {
-      return makeLineAnnotationRoman({ text: item.text, language: item.language })
-    }),
-  })
-}
-
-/**
  * Builds one background line.
  */
 const buildBackground = (draft: LineDraft): runtime.LineBackground => {
@@ -453,22 +520,6 @@ const buildLine = (draft: LineDraft): runtime.Line => {
     annotation: buildLineAnnotation(draft),
     backgrounds: draft.backgrounds.map(buildBackground),
   })
-}
-
-/**
- * Maps one iTunes agent type onto the model's.
- *
- * The model requires `raw` on `OTHER`, since it cannot tell whether the source stated that word or the reader gave up.
- */
-const readAgentType = (raw: string | undefined): { type: AgentType; raw: string | undefined } => {
-  switch (raw) {
-    case 'person':
-      return { type: AgentType.PERSON, raw: undefined }
-    case 'group':
-      return { type: AgentType.GROUP, raw: undefined }
-    default:
-      return { type: AgentType.OTHER, raw: raw ?? 'other' }
-  }
 }
 
 /**
@@ -574,24 +625,6 @@ const applyAmllMeta = (meta: runtime.Meta, element: XmlElement) => {
 }
 
 /**
- * Splits one annotation text into its main part and any background pieces it embeds.
- */
-const splitBackgroundText = (element: XmlElement) => {
-  let main = ''
-  const backgrounds: { text: string; key: string | undefined }[] = []
-
-  for (const child of element.children) {
-    if (child.nodeType === XmlNodeType.element && child.localName === 'span' && getXmlAttribute(child, 'role') === ROLE_BACKGROUND) {
-      backgrounds.push({ text: getXmlTextContent(child).trim(), key: getXmlAttribute(child, 'for') })
-      continue
-    }
-    main += getXmlTextContent(child)
-  }
-
-  return { main: main.trim(), backgrounds }
-}
-
-/**
  * Attaches head translations and transliterations to the lines they name by `itunes:key`.
  *
  * A replacement translation rewrites the line's text, which is how a source swaps one script for another.
@@ -655,62 +688,22 @@ const attachHeadAnnotations = (metadata: XmlElement | undefined, lineMap: Map<st
 }
 
 /**
- * Returns the paragraphs of a body, including any nested inside a div.
- */
-const findParagraphs = (body: XmlElement): XmlElement[] => {
-  const result: XmlElement[] = []
-  const stack: XmlElement[] = [body]
-
-  while (stack.length > 0) {
-    const element = stack.pop()
-    if (!element) {
-      continue
-    }
-    if (element.localName === 'p') {
-      result.push(element)
-      continue
-    }
-
-    const children = element.children
-    for (let index = children.length - 1; index >= 0; index -= 1) {
-      const child = children[index]
-      if (child && child.nodeType === XmlNodeType.element) {
-        stack.push(child)
-      }
-    }
-  }
-
-  return result
-}
-
-const readDeclaredTiming = (root: XmlElement): Timing | undefined => {
-  switch (getXmlQualifiedAttribute(root, 'itunes:timing')) {
-    case TIMING_WORD:
-      return Timing.WORD
-    case TIMING_LINE:
-      return Timing.LINE
-    default:
-      return undefined
-  }
-}
-
-/**
  * Reads a TTML document into the model.
  *
  * The profile only changes where metadata comes from, so one reader serves both.
  * A document that parses but holds no timed paragraph is `INVALID` rather than an error.
  */
-export const parseTtml = (input: string | TtmlContent, options: TtmlParseOptions = {}): ParseResult => {
+export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {}): ParseResult => {
   const content = readTtmlContent(input)
   if (!content) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: makeMeta() }))
   }
 
   const extra = {
-    profile: readTtmlProfile(content.original),
+    profile: readTtmlProfile(content),
   }
 
-  const document = parseXml(content.original)
+  const document = parseXml(content)
   const root = document ? findXmlElement(document, 'tt') : undefined
   if (!root) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: makeMeta(), extra }))
