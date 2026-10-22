@@ -13,7 +13,7 @@ import {
   resolveAnnotationTokenTime,
 } from '@gondola-lyrics/model/runtime'
 
-import { createXmlElement, createXmlText, formatTime, serializeXml } from '@root/utils'
+import { createXmlElement, createXmlText, serializeXml } from '@root/utils'
 
 import { FORMAT } from './common'
 import {
@@ -158,7 +158,12 @@ const renderTime = (time: number, offset: number) => {
     throw new RangeError('TTML timestamps must be non-negative integer milliseconds after applying the offset')
   }
 
-  return formatTime(shifted, 'hh:mm:ss.SSS')
+  const seconds = Math.floor(shifted / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = String(Math.floor(minutes / 60)).padStart(2, '0')
+  const milliseconds = String(shifted % 1000).padStart(3, '0')
+
+  return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}.${milliseconds}`
 }
 
 /**

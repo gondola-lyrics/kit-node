@@ -289,6 +289,14 @@ export const getXmlTextContent = (node: XmlNode): string => {
     return node.text
   }
 
+  if (node.children.length === 0) {
+    return ''
+  }
+  const child = node.children[0]
+  if (node.children.length === 1 && child !== undefined && child.nodeType !== XmlNodeType.element) {
+    return child.text
+  }
+
   const parts: string[] = []
   const stack: XmlNode[] = [node]
 

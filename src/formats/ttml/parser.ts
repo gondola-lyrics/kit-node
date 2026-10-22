@@ -111,6 +111,10 @@ export interface TtmlParseOptions {
   language?: string
 }
 
+const METADATA_NAMES = ['agent', 'songwriter', 'meta', 'translation', 'transliteration'] as const
+
+const WORD_SEPARATOR_PATTERN = /\p{White_Space}/u
+
 const readTtmlProfile = (source: string): TtmlProfile => {
   return AMLL_HINT_PATTERN.test(source) ? 'amll' : 'itunes'
 }
@@ -182,6 +186,13 @@ const readText = (element: XmlElement, inherited: boolean): string => {
  * Preserves the parser's whitespace segmentation when turning text into word drafts.
  */
 const splitWords = (text: string, language?: string): WordDraft[] => {
+  if (text === '') {
+    return []
+  }
+  if (!WORD_SEPARATOR_PATTERN.test(text)) {
+    return [{ text, space: false, language, rubies: [] }]
+  }
+
   const words: WordDraft[] = []
 
   for (const run of text.split(/(\p{White_Space}+)/u)) {
@@ -279,8 +290,15 @@ const splitBackgroundText = (element: XmlElement, preserveSpace: boolean, langua
 /**
  * Carries language and whitespace declarations through wrappers to the elements they govern.
  */
-const findElements = (root: XmlElement, name: string, preserveSpace: boolean, stopAtMatch = false, language?: string): ElementContext[] => {
-  const result: ElementContext[] = []
+const groupElements = (
+  root: XmlElement,
+  names: readonly string[],
+  preserveSpace: boolean,
+  stopAtMatch = false,
+  language?: string,
+): Map<string, ElementContext[]> => {
+  const wanted = new Set(names)
+  const result = new Map<string, ElementContext[]>()
   const stack: ElementContext[] = [{ element: root, preserveSpace, language }]
 
   while (stack.length > 0) {
@@ -291,8 +309,14 @@ const findElements = (root: XmlElement, name: string, preserveSpace: boolean, st
     const element = entry.element
     const currentSpace = readPreserveSpace(element, entry.preserveSpace)
     const currentLanguage = readLanguage(element, entry.language)
-    if (element.localName === name) {
-      result.push({ element, preserveSpace: currentSpace, language: currentLanguage })
+    if (wanted.has(element.localName)) {
+      const group = result.get(element.localName)
+      const context = { element, preserveSpace: currentSpace, language: currentLanguage }
+      if (group === undefined) {
+        result.set(element.localName, [context])
+      } else {
+        group.push(context)
+      }
       if (stopAtMatch) {
         continue
       }
@@ -308,6 +332,10 @@ const findElements = (root: XmlElement, name: string, preserveSpace: boolean, st
   }
 
   return result
+}
+
+const findElements = (root: XmlElement, name: string, preserveSpace: boolean, stopAtMatch = false, language?: string): ElementContext[] => {
+  return groupElements(root, [name], preserveSpace, stopAtMatch, language).get(name) ?? []
 }
 
 /**
@@ -600,13 +628,9 @@ const buildLine = (draft: LineDraft): runtime.Line => {
 /**
  * Reads the head's agents, which lines reference by id.
  */
-const readAgents = (metadata: ElementContext | undefined): runtime.Agent[] => {
-  if (!metadata) {
-    return []
-  }
-
+const readAgents = (elements: ElementContext[]): runtime.Agent[] => {
   const agents: runtime.Agent[] = []
-  for (const { element, preserveSpace, language } of findElements(metadata.element, 'agent', metadata.preserveSpace, false, metadata.language)) {
+  for (const { element, preserveSpace, language } of elements) {
     const id = getXmlQualifiedAttribute(element, 'xml:id') ?? getXmlAttribute(element, 'id')
     if (!id) {
       continue
@@ -639,12 +663,8 @@ const readAgents = (metadata: ElementContext | undefined): runtime.Agent[] => {
  *
  * AMLL wraps these in `iTunesMetadata`, so the whole head is searched rather than its direct children.
  */
-const readCredits = (metadata: ElementContext | undefined, meta: runtime.Meta) => {
-  if (!metadata) {
-    return
-  }
-
-  const names = findElements(metadata.element, 'songwriter', metadata.preserveSpace, false, metadata.language)
+const readCredits = (elements: ElementContext[], meta: runtime.Meta) => {
+  const names = elements
     .map(({ element, preserveSpace, language }) => {
       return makeText({ text: readText(element, preserveSpace), language })
     })
@@ -701,8 +721,8 @@ const applyAmllMeta = (meta: runtime.Meta, element: XmlElement, language?: strin
  *
  * A replacement translation rewrites the line's text, which is how a source swaps one script for another.
  */
-const attachHeadAnnotations = (metadata: ElementContext | undefined, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
-  if (!metadata || lineMap.size === 0) {
+const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
+  if (lineMap.size === 0) {
     return
   }
 
@@ -757,8 +777,8 @@ const attachHeadAnnotations = (metadata: ElementContext | undefined, lineMap: Ma
     }
   }
 
-  attach(findElements(metadata.element, 'translation', metadata.preserveSpace, false, metadata.language), 'translation')
-  attach(findElements(metadata.element, 'transliteration', metadata.preserveSpace, false, metadata.language), 'roman')
+  attach(metadata.get('translation') ?? [], 'translation')
+  attach(metadata.get('transliteration') ?? [], 'roman')
 }
 
 /**
@@ -786,16 +806,18 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   const language = readLanguage(root, lowerTag(options.language))
   const body = findElements(root, 'body', false, true, language)[0]
   const metadata = findElements(root, 'metadata', false, true, language)[0]
+  const metadataElements =
+    metadata === undefined
+      ? new Map<string, ElementContext[]>()
+      : groupElements(metadata.element, METADATA_NAMES, metadata.preserveSpace, false, metadata.language)
   const meta = makeMeta()
 
   if (language !== undefined) {
     meta.language = language
   }
 
-  readCredits(metadata, meta)
-  for (const { element, language: itemLanguage } of metadata
-    ? findElements(metadata.element, 'meta', metadata.preserveSpace, false, metadata.language)
-    : []) {
+  readCredits(metadataElements.get('songwriter') ?? [], meta)
+  for (const { element, language: itemLanguage } of metadataElements.get('meta') ?? []) {
     applyAmllMeta(meta, element, itemLanguage)
   }
 
@@ -822,7 +844,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     }
   }
 
-  attachHeadAnnotations(metadata, lineMap, backgroundMap)
+  attachHeadAnnotations(metadataElements, lineMap, backgroundMap)
 
   if (drafts.length === 0) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta, extra }))
@@ -845,7 +867,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
       timing: readDeclaredTiming(root) ?? (wordLevel ? Timing.WORD : Timing.LINE),
       meta,
       extra,
-      agents: readAgents(metadata),
+      agents: readAgents(metadataElements.get('agent') ?? []),
       languages: deriveLanguageUsages(lines),
       lines,
     }),
