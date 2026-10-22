@@ -93,6 +93,12 @@ interface LineDraft {
   romans: AnnotationDraft[]
   backgrounds: LineDraft[]
   wordLevel: boolean
+  preserveSpace: boolean
+}
+
+interface ElementContext {
+  element: XmlElement
+  preserveSpace: boolean
 }
 
 export type TtmlParseInput = string
@@ -148,15 +154,31 @@ const readDeclaredTiming = (root: XmlElement): Timing | undefined => {
   }
 }
 
+const readPreserveSpace = (element: XmlElement, inherited: boolean): boolean => {
+  switch (getXmlQualifiedAttribute(element, 'xml:space')) {
+    case 'preserve':
+      return true
+    case 'default':
+      return false
+    default:
+      return inherited
+  }
+}
+
+const readText = (element: XmlElement, inherited: boolean): string => {
+  const text = getXmlTextContent(element)
+  return readPreserveSpace(element, inherited) ? text : text.trim()
+}
+
 /**
  * Preserves the parser's whitespace segmentation when turning text into word drafts.
  */
 const splitWords = (text: string): WordDraft[] => {
   const words: WordDraft[] = []
 
-  for (const run of text.split(/(\s+)/)) {
+  for (const run of text.split(/(\p{White_Space}+)/u)) {
     if (run !== '') {
-      words.push({ text: run, space: !run.trim(), rubies: [] })
+      words.push({ text: run, space: /^\p{White_Space}+$/u.test(run), rubies: [] })
     }
   }
 
@@ -227,43 +249,48 @@ const buildLineAnnotation = (draft: LineDraft): runtime.LineAnnotation | undefin
 /**
  * Separates head annotation text from its background references.
  */
-const splitBackgroundText = (element: XmlElement) => {
+const splitBackgroundText = (element: XmlElement, preserveSpace: boolean) => {
+  preserveSpace = readPreserveSpace(element, preserveSpace)
   let main = ''
   const backgrounds: { text: string; key: string | undefined }[] = []
 
   for (const child of element.children) {
     if (child.nodeType === XmlNodeType.element && child.localName === 'span' && getXmlAttribute(child, 'role') === ROLE_BACKGROUND) {
-      backgrounds.push({ text: getXmlTextContent(child).trim(), key: getXmlAttribute(child, 'for') })
+      backgrounds.push({ text: readText(child, preserveSpace), key: getXmlAttribute(child, 'for') })
       continue
     }
     main += getXmlTextContent(child)
   }
 
-  return { main: main.trim(), backgrounds }
+  return { main: preserveSpace ? main : main.trim(), backgrounds }
 }
 
 /**
- * Finds paragraphs in document order, including nested divs.
+ * Carries whitespace declarations through wrappers to the elements they govern.
  */
-const findParagraphs = (body: XmlElement): XmlElement[] => {
-  const result: XmlElement[] = []
-  const stack: XmlElement[] = [body]
+const findElements = (root: XmlElement, name: string, preserveSpace: boolean, stopAtMatch = false): ElementContext[] => {
+  const result: ElementContext[] = []
+  const stack: ElementContext[] = [{ element: root, preserveSpace }]
 
   while (stack.length > 0) {
-    const element = stack.pop()
-    if (!element) {
+    const entry = stack.pop()
+    if (entry === undefined) {
       continue
     }
-    if (element.localName === 'p') {
-      result.push(element)
-      continue
+    const element = entry.element
+    const currentSpace = readPreserveSpace(element, entry.preserveSpace)
+    if (element.localName === name) {
+      result.push({ element, preserveSpace: currentSpace })
+      if (stopAtMatch) {
+        continue
+      }
     }
 
     const children = element.children
     for (let index = children.length - 1; index >= 0; index -= 1) {
       const child = children[index]
       if (child && child.nodeType === XmlNodeType.element) {
-        stack.push(child)
+        stack.push({ element: child, preserveSpace: currentSpace })
       }
     }
   }
@@ -274,7 +301,8 @@ const findParagraphs = (body: XmlElement): XmlElement[] => {
 /**
  * Reads an AMLL ruby container into one word plus its per-syllable annotation.
  */
-const readRuby = (container: XmlElement): WordDraft | undefined => {
+const readRuby = (container: XmlElement, preserveSpace: boolean): WordDraft | undefined => {
+  preserveSpace = readPreserveSpace(container, preserveSpace)
   let base = ''
   let rubyTime: ReturnType<typeof readSpanTime>
   const tokens: TokenDraft[] = []
@@ -282,7 +310,7 @@ const readRuby = (container: XmlElement): WordDraft | undefined => {
   for (const child of getXmlChildElements(container, 'span')) {
     const kind = getXmlAttribute(child, 'ruby')
     if (kind === RUBY_BASE) {
-      base = getXmlTextContent(child).trim()
+      base = readText(child, preserveSpace)
       continue
     }
     if (kind !== RUBY_TEXT_CONTAINER) {
@@ -290,12 +318,13 @@ const readRuby = (container: XmlElement): WordDraft | undefined => {
     }
 
     rubyTime ??= readSpanTime(child)
+    const rubySpace = readPreserveSpace(child, preserveSpace)
     for (const text of getXmlChildElements(child, 'span')) {
       if (getXmlAttribute(text, 'ruby') !== RUBY_TEXT) {
         continue
       }
       const time = readSpanTime(text)
-      const content = getXmlTextContent(text).trim()
+      const content = readText(text, rubySpace)
       if (!content) {
         continue
       }
@@ -330,20 +359,21 @@ const readRuby = (container: XmlElement): WordDraft | undefined => {
  *
  * Text between spans carries the separators, and a span without a readable begin contributes its text untimed.
  * A span carrying a role is annotation rather than a word, so it is skipped here.
- * Indentation between tags is dropped, since the words themselves keep their own trailing spaces.
+ * Whitespace inside a span remains a separator; indentation is dropped only without a preserve declaration.
  */
-const readWords = (element: XmlElement): { words: WordDraft[]; wordLevel: boolean } => {
+const readWords = (element: XmlElement, preserveSpace: boolean): { words: WordDraft[]; wordLevel: boolean } => {
+  preserveSpace = readPreserveSpace(element, preserveSpace)
   const words: WordDraft[] = []
   let wordLevel = false
 
   for (const child of element.children) {
-    if (child.nodeType === XmlNodeType.text) {
-      if (!isFormattingWhitespace(child.text)) {
+    if (child.nodeType !== XmlNodeType.element) {
+      if (preserveSpace || !isFormattingWhitespace(child.text)) {
         words.push(...splitWords(child.text))
       }
       continue
     }
-    if (child.nodeType !== XmlNodeType.element || child.localName !== 'span') {
+    if (child.localName !== 'span') {
       continue
     }
 
@@ -353,33 +383,37 @@ const readWords = (element: XmlElement): { words: WordDraft[]; wordLevel: boolea
     }
 
     if (getXmlAttribute(child, 'ruby') === RUBY_CONTAINER) {
-      const ruby = readRuby(child)
+      const ruby = readRuby(child, preserveSpace)
       if (ruby !== undefined) {
-        words.push(ruby)
-        wordLevel = true
+        for (const part of splitWords(ruby.text)) {
+          words.push(part.space ? part : { ...ruby, text: part.text })
+        }
+        wordLevel ||= ruby.start !== undefined
       }
       continue
     }
 
-    const text = getXmlTextContent(child).trim()
-    if (!text) {
+    const text = getXmlTextContent(child)
+    const childSpace = readPreserveSpace(child, preserveSpace)
+    if (!text || (!childSpace && isFormattingWhitespace(text))) {
       continue
     }
 
     const time = readSpanTime(child)
-    if (time === undefined) {
-      words.push({ text, space: false, rubies: [] })
-      continue
+    for (const part of splitWords(text)) {
+      if (!part.space && time !== undefined) {
+        part.start = time.start
+        part.end = time.end
+        wordLevel = true
+      }
+      words.push(part)
     }
-
-    wordLevel = true
-    words.push({ text, space: false, start: time.start, end: time.end, rubies: [] })
   }
 
   return { words, wordLevel }
 }
 
-const readInlineAnnotations = (element: XmlElement): Pick<LineDraft, 'translations' | 'romans'> => {
+const readInlineAnnotations = (element: XmlElement, preserveSpace: boolean): Pick<LineDraft, 'translations' | 'romans'> => {
   const translations: AnnotationDraft[] = []
   const romans: AnnotationDraft[] = []
 
@@ -388,7 +422,7 @@ const readInlineAnnotations = (element: XmlElement): Pick<LineDraft, 'translatio
     if (role !== ROLE_TRANSLATION && role !== ROLE_ROMAN) {
       continue
     }
-    const text = getXmlTextContent(span).trim()
+    const text = readText(span, preserveSpace)
     if (!text) {
       continue
     }
@@ -407,7 +441,8 @@ const readInlineAnnotations = (element: XmlElement): Pick<LineDraft, 'translatio
 /**
  * Reads one paragraph, pulling its inline annotations and background lines out of the word stream.
  */
-const readLine = (element: XmlElement): LineDraft | undefined => {
+const readLine = (element: XmlElement, preserveSpace: boolean): LineDraft | undefined => {
+  preserveSpace = readPreserveSpace(element, preserveSpace)
   const time = readLineTime(element)
   if (time === undefined) {
     return undefined
@@ -423,10 +458,11 @@ const readLine = (element: XmlElement): LineDraft | undefined => {
     romans: [],
     backgrounds: [],
     wordLevel: false,
+    preserveSpace,
   }
 
   if (!hasXmlChildElement(element, 'span')) {
-    const plain = getXmlTextContent(element).trim()
+    const plain = readText(element, preserveSpace)
     if (!plain) {
       return undefined
     }
@@ -435,17 +471,17 @@ const readLine = (element: XmlElement): LineDraft | undefined => {
     return draft
   }
 
-  const read = readWords(element)
+  const read = readWords(element, preserveSpace)
   draft.words = read.words
   draft.wordLevel = read.wordLevel
-  const annotations = readInlineAnnotations(element)
+  const annotations = readInlineAnnotations(element, preserveSpace)
   draft.translations = annotations.translations
   draft.romans = annotations.romans
 
   for (const span of getXmlChildElements(element, 'span')) {
     const role = getXmlAttribute(span, 'role')
     if (role === ROLE_BACKGROUND) {
-      const background = readBackground(span)
+      const background = readBackground(span, preserveSpace)
       if (background) {
         draft.backgrounds.push(background)
       }
@@ -460,8 +496,9 @@ const readLine = (element: XmlElement): LineDraft | undefined => {
  *
  * A background line states no time of its own in AMLL files, so its range comes from its words.
  */
-const readBackground = (element: XmlElement): LineDraft | undefined => {
-  const read = readWords(element)
+const readBackground = (element: XmlElement, preserveSpace: boolean): LineDraft | undefined => {
+  preserveSpace = readPreserveSpace(element, preserveSpace)
+  const read = readWords(element, preserveSpace)
   if (read.words.length === 0) {
     return undefined
   }
@@ -488,9 +525,10 @@ const readBackground = (element: XmlElement): LineDraft | undefined => {
     agentId: getXmlAttribute(element, 'agent'),
     key: getXmlAttribute(element, 'key'),
     words: read.words,
-    ...readInlineAnnotations(element),
+    ...readInlineAnnotations(element, preserveSpace),
     backgrounds: [],
     wordLevel: read.wordLevel,
+    preserveSpace,
   }
 }
 
@@ -499,14 +537,12 @@ const buildContent = (draft: LineDraft): runtime.LineContent => {
     return makeLineContentWords(buildWords(draft))
   }
 
-  return makeLineContentText(
-    draft.words
-      .map((word) => {
-        return word.text
-      })
-      .join('')
-      .trim(),
-  )
+  const text = draft.words
+    .map((word) => {
+      return word.text
+    })
+    .join('')
+  return makeLineContentText(draft.preserveSpace ? text : text.trim())
 }
 
 /**
@@ -643,13 +679,13 @@ const applyAmllMeta = (meta: runtime.Meta, element: XmlElement) => {
  *
  * A replacement translation rewrites the line's text, which is how a source swaps one script for another.
  */
-const attachHeadAnnotations = (metadata: XmlElement | undefined, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
+const attachHeadAnnotations = (metadata: ElementContext | undefined, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
   if (!metadata || lineMap.size === 0) {
     return
   }
 
-  const attach = (blocks: XmlElement[], kind: 'translation' | 'roman') => {
-    for (const block of blocks) {
+  const attach = (blocks: ElementContext[], kind: 'translation' | 'roman') => {
+    for (const { element: block, preserveSpace } of blocks) {
       const language = lowerTag(getXmlAttribute(block, 'lang'))
       const type = getXmlQualifiedAttribute(block, 'type') ?? getXmlAttribute(block, 'type')
 
@@ -660,11 +696,12 @@ const attachHeadAnnotations = (metadata: XmlElement | undefined, lineMap: Map<st
           continue
         }
 
-        const { main, backgrounds } = splitBackgroundText(text)
+        const { main, backgrounds } = splitBackgroundText(text, preserveSpace)
         if (kind === 'translation' && type === 'replacement') {
           if (main) {
             line.words = splitWords(main)
             line.wordLevel = false
+            line.preserveSpace = readPreserveSpace(text, preserveSpace)
           }
           continue
         }
@@ -697,8 +734,8 @@ const attachHeadAnnotations = (metadata: XmlElement | undefined, lineMap: Map<st
     }
   }
 
-  attach(findXmlElements(metadata, 'translation'), 'translation')
-  attach(findXmlElements(metadata, 'transliteration'), 'roman')
+  attach(findElements(metadata.element, 'translation', metadata.preserveSpace), 'translation')
+  attach(findElements(metadata.element, 'transliteration', metadata.preserveSpace), 'roman')
 }
 
 /**
@@ -723,8 +760,8 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: makeMeta(), extra }))
   }
 
-  const body = findXmlElement(root, 'body')
-  const metadata = findXmlElement(root, 'metadata')
+  const body = findElements(root, 'body', false, true)[0]
+  const metadata = findElements(root, 'metadata', false, true)[0]
   const meta = makeMeta()
 
   const language = lowerTag(getXmlQualifiedAttribute(root, 'xml:lang')) ?? lowerTag(options.language)
@@ -732,8 +769,8 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     meta.language = language
   }
 
-  readCredits(metadata, meta)
-  for (const element of metadata ? findXmlElements(metadata, 'meta') : []) {
+  readCredits(metadata?.element, meta)
+  for (const element of metadata ? findXmlElements(metadata.element, 'meta') : []) {
     applyAmllMeta(meta, element)
   }
 
@@ -741,8 +778,8 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   const lineMap = new Map<string, LineDraft>()
   const backgroundMap = new Map<string, LineDraft>()
 
-  for (const element of body ? findParagraphs(body) : []) {
-    const draft = readLine(element)
+  for (const { element, preserveSpace } of body ? findElements(body.element, 'p', body.preserveSpace, true) : []) {
+    const draft = readLine(element, preserveSpace)
     if (!draft) {
       continue
     }
@@ -781,7 +818,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
       timing: readDeclaredTiming(root) ?? (wordLevel ? Timing.WORD : Timing.LINE),
       meta,
       extra,
-      agents: readAgents(metadata),
+      agents: readAgents(metadata?.element),
       languages: deriveLanguageUsages(lines),
       lines,
     }),
