@@ -59,14 +59,14 @@ import {
 } from './utils'
 
 interface TokenDraft {
-  start: number
-  end: number
+  start?: number
+  end?: number
   text: string
 }
 
 interface RubyDraft {
-  start: number
-  end: number
+  start?: number
+  end?: number
   tokens: TokenDraft[]
 }
 
@@ -108,22 +108,6 @@ const readTtmlProfile = (source: string): TtmlProfile => {
 
 const readSpanTime = (element: XmlElement) => {
   const begin = getXmlAttribute(element, 'begin')
-  const end = getXmlAttribute(element, 'end')
-  if (!begin || !end) {
-    return undefined
-  }
-
-  const start = parseTime(begin)
-  const finish = parseTime(end)
-  if (start === undefined || finish === undefined) {
-    return undefined
-  }
-
-  return { start, end: finish }
-}
-
-const readLineTime = (element: XmlElement) => {
-  const begin = getXmlAttribute(element, 'begin')
   if (!begin) {
     return undefined
   }
@@ -136,6 +120,10 @@ const readLineTime = (element: XmlElement) => {
   const end = getXmlAttribute(element, 'end')
 
   return { start, end: end ? parseTime(end) : undefined }
+}
+
+const readLineTime = (element: XmlElement) => {
+  return readSpanTime(element)
 }
 
 const readAgentType = (raw: string | undefined): { type: AgentType; raw: string | undefined } => {
@@ -202,9 +190,12 @@ const buildWords = (draft: LineDraft): runtime.Word[] => {
 
     const rubies = word.rubies.map((ruby) => {
       return makeWordAnnotationRuby({
-        time: makeTimeRange({ start: ruby.start, end: ruby.end }),
+        time: ruby.start === undefined ? undefined : makeTimeRange({ start: ruby.start, end: ruby.end }),
         tokens: ruby.tokens.map((token) => {
-          return makeWordAnnotationToken({ text: token.text, time: makeTimeRange({ start: token.start, end: token.end }) })
+          return makeWordAnnotationToken({
+            text: token.text,
+            time: token.start === undefined ? undefined : makeTimeRange({ start: token.start, end: token.end }),
+          })
         }),
       })
     })
@@ -285,6 +276,7 @@ const findParagraphs = (body: XmlElement): XmlElement[] => {
  */
 const readRuby = (container: XmlElement): WordDraft | undefined => {
   let base = ''
+  let rubyTime: ReturnType<typeof readSpanTime>
   const tokens: TokenDraft[] = []
 
   for (const child of getXmlChildElements(container, 'span')) {
@@ -297,38 +289,46 @@ const readRuby = (container: XmlElement): WordDraft | undefined => {
       continue
     }
 
+    rubyTime ??= readSpanTime(child)
     for (const text of getXmlChildElements(child, 'span')) {
       if (getXmlAttribute(text, 'ruby') !== RUBY_TEXT) {
         continue
       }
       const time = readSpanTime(text)
       const content = getXmlTextContent(text).trim()
-      if (time === undefined || !content) {
+      if (!content) {
         continue
       }
-      tokens.push({ start: time.start, end: time.end, text: content })
+      tokens.push({ start: time?.start, end: time?.end, text: content })
     }
   }
 
-  const first = tokens[0]
-  const last = tokens[tokens.length - 1]
-  if (!base || first === undefined || last === undefined) {
+  if (!base) {
     return undefined
   }
+
+  const first = tokens.find((token) => {
+    return token.start !== undefined
+  })
+  const last = tokens.findLast((token) => {
+    return token.start !== undefined
+  })
+  // Older AMLL containers state timing only on their annotation tokens.
+  const time = readSpanTime(container) ?? rubyTime ?? (first === undefined ? undefined : { start: first.start, end: last?.end })
 
   return {
     text: base,
     space: false,
-    start: first.start,
-    end: last.end,
-    rubies: [{ start: first.start, end: last.end, tokens }],
+    start: time?.start,
+    end: time?.end,
+    rubies: tokens.length === 0 ? [] : [{ start: rubyTime?.start, end: rubyTime?.end, tokens }],
   }
 }
 
 /**
  * Collects the words of one span-bearing element.
  *
- * Text between spans carries the separators, and a span without both ends contributes its text untimed.
+ * Text between spans carries the separators, and a span without a readable begin contributes its text untimed.
  * A span carrying a role is annotation rather than a word, so it is skipped here.
  * Indentation between tags is dropped, since the words themselves keep their own trailing spaces.
  */
