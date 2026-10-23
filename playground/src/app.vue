@@ -176,6 +176,7 @@
                     </button>
                     <button id="json-switch" type="button" :aria-pressed="view === 'json'" @click="view = 'json'">JSON</button>
                     <button id="lrc-switch" type="button" :aria-pressed="view === 'lrc'" @click="view = 'lrc'">LRC</button>
+                    <button id="ttml-switch" type="button" :aria-pressed="view === 'ttml'" @click="view = 'ttml'">TTML</button>
                   </div>
                   <span :class="$style.viewCounts">
                     {{ result.lyric.lines.length }} {{ t('result.lineUnit') }}
@@ -189,8 +190,15 @@
                 <div v-else-if="view === 'json'" :class="$style.jsonView">
                   <pre id="result-json" :class="$style.jsonCode" tabindex="0" @keydown="selectAllIn($event)">{{ json }}</pre>
                 </div>
-                <div v-else :class="$style.jsonView">
+                <div v-else-if="view === 'lrc'" :class="$style.jsonView">
                   <pre id="result-lrc" :class="$style.jsonCode" tabindex="0" @keydown="selectAllIn($event)">{{ lrcText }}</pre>
+                </div>
+                <div v-else :class="$style.jsonView">
+                  <div v-if="ttml?.error" :class="$style.error" role="alert">
+                    <strong>{{ t('result.ttmlGenerationFailed') }}</strong>
+                    <p>{{ ttml.error }}</p>
+                  </div>
+                  <pre v-else id="result-ttml" :class="$style.jsonCode" tabindex="0" @keydown="selectAllIn($event)">{{ ttml?.text }}</pre>
                 </div>
               </div>
             </template>
@@ -214,8 +222,8 @@ import { useParser } from './composables/useParser'
 import { formatBytes } from './lib/format'
 
 const { locale, t, setLocale } = useI18n()
-const { form, result, parsing, error, errorDetail, storageAvailable, json, lrc } = useParser()
-const view = ref<'preview' | 'json' | 'lrc'>('preview')
+const { form, result, parsing, error, errorDetail, storageAvailable, json, lrc, ttml } = useParser()
+const view = ref<'preview' | 'json' | 'lrc' | 'ttml'>('preview')
 
 /**
  * Annotations live in their own LRC files, so they are labelled to keep the sections apart.
@@ -494,6 +502,7 @@ onMounted(() => {
 
 .viewTabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;

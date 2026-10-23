@@ -82,6 +82,17 @@ export const useParser = () => {
   const lrc = computed(() => {
     return result.value ? generate(result.value.lyric, 'lrc') : null
   })
+  const ttml = computed(() => {
+    if (!result.value) {
+      return null
+    }
+
+    try {
+      return { text: generate(result.value.lyric, 'ttml', { indent: true }) ?? '', error: '' }
+    } catch (cause) {
+      return { text: '', error: cause instanceof Error ? cause.message : String(cause) }
+    }
+  })
 
   const cancelScheduledParse = () => {
     if (timer !== undefined) {
@@ -200,5 +211,5 @@ export const useParser = () => {
     cancelScheduledParse()
   })
 
-  return { form, result, parsing, error, errorDetail, storageAvailable, json, lrc }
+  return { form, result, parsing, error, errorDetail, storageAvailable, json, lrc, ttml }
 }
