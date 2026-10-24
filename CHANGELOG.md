@@ -1,3 +1,25 @@
+## v0.3.0 (2026-10-25)
+
+### Feature
+
+- format-ttml
+  - add generator ([708be02](https://github.com/gondola-lyrics/kit-node/commit/708be02cab6bc7443d6ea13ac7d90ea3709ca7e3))
+
+### Fix
+
+- format-ttml
+  - preserve inherited language tags and explicit clears ([42e7c5c](https://github.com/gondola-lyrics/kit-node/commit/42e7c5cb9a0855fc6168014e3c7098bec920e178))
+  - preserve whitespace and cdata text ([19550aa](https://github.com/gondola-lyrics/kit-node/commit/19550aad5ed10fa5cec01bd9acca2a3521973269))
+  - preserve background text and annotations ([005c05f](https://github.com/gondola-lyrics/kit-node/commit/005c05f8c99f9243150660e70523ccf47feb1d75))
+  - preserve open ranges and ruby bounds ([1adf33f](https://github.com/gondola-lyrics/kit-node/commit/1adf33f68106477bfbcce69b18efa97eb8091fc3))
+- utils
+  - preserve supplementary characters in xml attributes ([98c1a3a](https://github.com/gondola-lyrics/kit-node/commit/98c1a3afc9ff66c8fbae7d4164fa82ada41f4033))
+
+### Performance
+
+- format-ttml
+  - reduce allocations ([0c1ce78](https://github.com/gondola-lyrics/kit-node/commit/0c1ce78b0ab75c447c22b1e3447e80cfd99cdf26))
+
 ## v0.2.0 (2026-10-21)
 
 ### Feature
