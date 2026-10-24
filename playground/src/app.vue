@@ -17,38 +17,40 @@
           <h2 id="input-heading" :class="$style.visuallyHidden">{{ t('input.title') }}</h2>
 
           <div :class="$style.body">
-            <div :class="$style.modeTabs" role="tablist" :aria-label="t('settings.mode')">
-              <button
-                id="mode-auto"
-                type="button"
-                role="tab"
-                :aria-selected="form.mode === 'auto'"
-                :aria-controls="'input-auto'"
-                @click="form.mode = 'auto'"
-              >
-                {{ t('settings.auto') }}
-              </button>
-              <button
-                id="mode-lrc"
-                type="button"
-                role="tab"
-                :aria-selected="form.mode === 'lrc'"
-                :aria-controls="'input-lrc'"
-                @click="form.mode = 'lrc'"
-              >
-                {{ t('settings.lrc') }}
-              </button>
-              <button
-                id="mode-ttml"
-                type="button"
-                role="tab"
-                :aria-selected="form.mode === 'ttml'"
-                :aria-controls="'input-ttml'"
-                @click="form.mode = 'ttml'"
-              >
-                {{ t('settings.ttml') }}
-              </button>
-            </div>
+            <OptionsPanel id="parse-options" v-model="form.options" scope="parse" :format="form.mode === 'auto' ? null : form.mode">
+              <div :class="$style.modeTabs" role="tablist" :aria-label="t('settings.mode')">
+                <button
+                  id="mode-auto"
+                  type="button"
+                  role="tab"
+                  :aria-selected="form.mode === 'auto'"
+                  :aria-controls="'input-auto'"
+                  @click="form.mode = 'auto'"
+                >
+                  {{ t('settings.auto') }}
+                </button>
+                <button
+                  id="mode-lrc"
+                  type="button"
+                  role="tab"
+                  :aria-selected="form.mode === 'lrc'"
+                  :aria-controls="'input-lrc'"
+                  @click="form.mode = 'lrc'"
+                >
+                  {{ t('settings.lrc') }}
+                </button>
+                <button
+                  id="mode-ttml"
+                  type="button"
+                  role="tab"
+                  :aria-selected="form.mode === 'ttml'"
+                  :aria-controls="'input-ttml'"
+                  @click="form.mode = 'ttml'"
+                >
+                  {{ t('settings.ttml') }}
+                </button>
+              </div>
+            </OptionsPanel>
 
             <div v-if="form.mode === 'auto'" id="input-auto" role="tabpanel" aria-labelledby="mode-auto" :class="$style.editorShell">
               <label :class="$style.visuallyHidden" for="lyrics-input-auto">{{ t('input.label') }}</label>
@@ -56,7 +58,6 @@
                 id="lyrics-input-auto"
                 v-model="form.autoContent"
                 :class="$style.editor"
-                :readonly="parsing"
                 spellcheck="false"
                 autocomplete="off"
                 autocapitalize="off"
@@ -69,7 +70,6 @@
                 id="lyrics-input-lrc"
                 v-model="form.lrcContent"
                 :class="$style.editor"
-                :readonly="parsing"
                 spellcheck="false"
                 autocomplete="off"
                 autocapitalize="off"
@@ -82,7 +82,6 @@
                     id="lyrics-input-translations"
                     v-model="form.translations"
                     :class="[$style.editor, $style.trackEditor]"
-                    :readonly="parsing"
                     spellcheck="false"
                     autocomplete="off"
                     autocapitalize="off"
@@ -94,7 +93,6 @@
                     id="lyrics-input-romans"
                     v-model="form.romans"
                     :class="[$style.editor, $style.trackEditor]"
-                    :readonly="parsing"
                     spellcheck="false"
                     autocomplete="off"
                     autocapitalize="off"
@@ -109,7 +107,6 @@
                 id="lyrics-input-ttml"
                 v-model="form.ttmlContent"
                 :class="$style.editor"
-                :readonly="parsing"
                 spellcheck="false"
                 autocomplete="off"
                 autocapitalize="off"
@@ -133,7 +130,7 @@
               <div :class="$style.resultCard">
                 <div :class="$style.summary">
                   <span :class="[$style.status, { [$style.statusWarn]: result.lyric.status !== LyricStatus.VALID }]">{{ statusLabel }}</span>
-                  <span :class="$style.summaryItem">{{ timingLabel }}</span>
+                  <span :class="[$style.summaryItem, $style.summaryTiming]">{{ timingSummary }}</span>
                   <span :class="[$style.summaryItem, $style.mono]" :title="t('result.elapsed')">{{ result.elapsed.toFixed(2) }} ms</span>
                   <span :class="[$style.summaryItem, $style.mono]" :title="t('result.size')">
                     {{ formatBytes(result.inputBytes) }} → {{ result.encodedBytes === null ? '—' : formatBytes(result.encodedBytes) }}
@@ -169,7 +166,7 @@
                   <p>{{ result.encodingError }}</p>
                 </div>
 
-                <div :class="$style.viewTabs">
+                <OptionsPanel id="generate-options" v-model="form.options" scope="generate" :format="view === 'lrc' || view === 'ttml' ? view : null">
                   <div :class="$style.viewTabsButtons">
                     <button id="preview-switch" type="button" :aria-pressed="view === 'preview'" @click="view = 'preview'">
                       {{ t('result.preview') }}
@@ -178,11 +175,7 @@
                     <button id="lrc-switch" type="button" :aria-pressed="view === 'lrc'" @click="view = 'lrc'">LRC</button>
                     <button id="ttml-switch" type="button" :aria-pressed="view === 'ttml'" @click="view = 'ttml'">TTML</button>
                   </div>
-                  <span :class="$style.viewCounts">
-                    {{ result.lyric.lines.length }} {{ t('result.lineUnit') }}
-                    <template v-if="wordCount"> · {{ wordCount }} {{ t('result.wordUnit') }}</template>
-                  </span>
-                </div>
+                </OptionsPanel>
 
                 <div v-if="view === 'preview'" id="result-preview" :class="$style.resultContent">
                   <ResultView :lyric="result.lyric" />
@@ -216,6 +209,7 @@
 import { LyricStatus, Timing, WordType } from '@gondola-lyrics/model/runtime'
 import { computed, onMounted, ref } from 'vue'
 
+import OptionsPanel from './components/options-panel.vue'
 import ResultView from './components/result-view.vue'
 import { useI18n } from './composables/useI18n'
 import { useParser } from './composables/useParser'
@@ -271,6 +265,14 @@ const wordCount = computed(() => {
     }
   }
   return count
+})
+
+const timingSummary = computed(() => {
+  const parts = [timingLabel.value, `${result.value?.lyric.lines.length ?? 0} ${t('result.lineUnit')}`]
+  if (wordCount.value) {
+    parts.push(`${wordCount.value} ${t('result.wordUnit')}`)
+  }
+  return parts.join(' - ')
 })
 
 const toggleLocale = () => {
@@ -397,14 +399,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 26px;
-  margin-bottom: -14px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  background: var(--wash);
 
   button {
+    min-height: 44px;
     padding: 10px 0;
     border: 0;
     background: none;
@@ -429,7 +426,7 @@ onMounted(() => {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0 0 6px 6px;
   background: #fff;
 }
 
@@ -457,12 +454,6 @@ onMounted(() => {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-/* The tabs sit on the editor's top edge, so the mode switch and source form read as one control. */
-.modeTabs + .editorShell {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
 }
 
 .editor {
@@ -500,24 +491,14 @@ onMounted(() => {
   font-size: 11px;
 }
 
-.viewTabs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 14px 12px;
-  border-bottom: 1px solid var(--line);
-  background: #fff;
-}
-
 .viewTabsButtons {
   display: flex;
   align-items: center;
   gap: 22px;
 
   button {
-    padding: 0 0 6px;
+    min-height: 44px;
+    padding: 10px 0;
     border: 0;
     background: none;
     color: var(--muted);
@@ -533,13 +514,6 @@ onMounted(() => {
       font-weight: 550;
     }
   }
-}
-
-.viewCounts {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  white-space: nowrap;
 }
 
 .resultCard {
@@ -583,6 +557,13 @@ onMounted(() => {
   &:last-child {
     border-right: 0;
   }
+}
+
+.summaryTiming {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .version {
@@ -727,21 +708,7 @@ onMounted(() => {
   }
 
   .block {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
     padding: 30px 0;
-  }
-
-  .rail {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 6px 12px;
-    padding-top: 0;
-  }
-
-  .rail .note {
-    flex-basis: 100%;
   }
 
   .editor {
@@ -780,10 +747,6 @@ onMounted(() => {
     padding: 10px 0;
   }
 
-  .title {
-    font-size: 19px;
-  }
-
   .block {
     padding: 26px 0;
   }
@@ -791,6 +754,27 @@ onMounted(() => {
   .editor {
     min-height: 210px;
     padding: 12px;
+  }
+
+  .trackSection {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trackCell + .trackCell {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .trackEditor {
+    min-height: 120px;
+  }
+
+  .modeTabs {
+    gap: 18px;
+  }
+
+  .viewTabsButtons {
+    gap: 8px;
   }
 
   .summary {
@@ -809,8 +793,18 @@ onMounted(() => {
     font-size: 11px;
   }
 
+  .summaryItem {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   .status {
     grid-column: 1 / -1;
+  }
+
+  .version {
+    margin-left: 0;
   }
 
   .resultContent {

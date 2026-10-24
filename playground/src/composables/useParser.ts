@@ -1,4 +1,5 @@
 import type { Diagnostic, Lyric } from '@gondola-lyrics/model/runtime'
+import type { PlaygroundOptions } from '../lib/options'
 import type { MessageKey } from './useI18n'
 
 import { encode } from '@gondola-lyrics/model/runtime'
@@ -6,15 +7,16 @@ import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } 
 
 import { generate, parse, parseLrc, parseTtml } from '@gondola-lyrics/kit'
 
+import { createOptions, getOptionOverrides, readOptions } from '../lib/options'
+
 interface FormState {
   mode: 'auto' | 'lrc' | 'ttml'
-  /** Each mode keeps its own text, so switching never carries one format's source into another. */
   autoContent: string
   lrcContent: string
   ttmlContent: string
-  /** LRC keeps translations and romanizations in their own files, so they get their own inputs. */
   translations: string
   romans: string
+  options: PlaygroundOptions
 }
 
 interface ParsedResult {
@@ -24,6 +26,7 @@ interface ParsedResult {
   inputBytes: number
   encodedBytes: number | null
   encodingError: string
+  options: PlaygroundOptions
 }
 
 const STORAGE_KEY = 'gondola-playground-input-v1'
@@ -37,7 +40,15 @@ const readText = (saved: Record<string, unknown>, key: string): string => {
 }
 
 const readForm = (): FormState => {
-  const defaults: FormState = { mode: 'auto', autoContent: '', lrcContent: '', ttmlContent: '', translations: '', romans: '' }
+  const defaults: FormState = {
+    mode: 'auto',
+    autoContent: '',
+    lrcContent: '',
+    ttmlContent: '',
+    translations: '',
+    romans: '',
+    options: createOptions(),
+  }
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -54,6 +65,7 @@ const readForm = (): FormState => {
       ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
+      options: readOptions(saved.options),
     }
   } catch {
     return defaults
@@ -61,8 +73,8 @@ const readForm = (): FormState => {
 }
 
 /**
- * Coalesce edits into a trailing parse without postponing it throughout continuous input.
- * Manual parsing bypasses the timer; disposing the view cancels queued work.
+ * Coalesce source and option edits into one trailing update without postponing continuous input.
+ * Generated views use the same snapshot so they cannot bypass the shared throttle.
  */
 export const useParser = () => {
   const form = reactive(readForm())
@@ -80,7 +92,7 @@ export const useParser = () => {
     return result.value ? JSON.stringify(result.value.lyric, null, 2) : ''
   })
   const lrc = computed(() => {
-    return result.value ? generate(result.value.lyric, 'lrc') : null
+    return result.value ? generate(result.value.lyric, 'lrc', result.value.options.generate.lrc) : null
   })
   const ttml = computed(() => {
     if (!result.value) {
@@ -88,7 +100,11 @@ export const useParser = () => {
     }
 
     try {
-      return { text: generate(result.value.lyric, 'ttml', { indent: true }) ?? '', error: '' }
+      const options = result.value.options.generate.ttml
+      return {
+        text: generate(result.value.lyric, 'ttml', { ...options, profile: options.profile === 'auto' ? undefined : options.profile }) ?? '',
+        error: '',
+      }
     } catch (cause) {
       return { text: '', error: cause instanceof Error ? cause.message : String(cause) }
     }
@@ -132,13 +148,15 @@ export const useParser = () => {
       return
     }
     cancelScheduledParse()
-    const input = { ...form }
-    lastInput = JSON.stringify(input)
-    resetResult()
+    const input = { ...form, options: readOptions(form.options) }
+    lastInput = JSON.stringify(form)
+    error.value = ''
+    errorDetail.value = ''
 
     // Only the selected mode's source is parsed, and its annotation tracks travel with it.
     const content = input.mode === 'lrc' ? input.lrcContent : input.mode === 'ttml' ? input.ttmlContent : input.autoContent
     if (!content.trim()) {
+      resetResult()
       return
     }
 
@@ -151,15 +169,19 @@ export const useParser = () => {
       const start = performance.now()
       const parsed =
         input.mode === 'lrc'
-          ? parseLrc({
-              original: input.lrcContent,
-              translations: input.translations.trim() ? input.translations : undefined,
-              romans: input.romans.trim() ? input.romans : undefined,
-            })
+          ? parseLrc(
+              {
+                original: input.lrcContent,
+                translations: input.translations.trim() ? input.translations : undefined,
+                romans: input.romans.trim() ? input.romans : undefined,
+              },
+              input.options.parse.lrc,
+            )
           : input.mode === 'ttml'
-            ? parseTtml(input.ttmlContent)
-            : parse(input.autoContent)
+            ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
+            : parse(input.autoContent, { ...input.options.parse.lrc, language: input.options.parse.ttml.language.trim() || undefined })
       if (!parsed) {
+        result.value = null
         error.value = 'error.unrecognized'
         return
       }
@@ -180,8 +202,10 @@ export const useParser = () => {
         inputBytes: encoder.encode(content + (input.mode === 'lrc' ? input.translations + input.romans : '')).byteLength,
         encodedBytes,
         encodingError,
+        options: input.options,
       }
     } catch (cause) {
+      result.value = null
       error.value = 'error.unexpected'
       errorDetail.value = cause instanceof Error ? cause.message : String(cause)
     } finally {
@@ -196,7 +220,9 @@ export const useParser = () => {
     form,
     () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(form))
+        const { options, ...input } = form
+        const overrides = getOptionOverrides(options)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...input, ...(overrides ? { options: overrides } : {}) }))
         storageAvailable.value = true
       } catch {
         storageAvailable.value = false
