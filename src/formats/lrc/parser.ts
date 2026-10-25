@@ -7,6 +7,7 @@ import {
   LyricStatus,
   makeLineContentText,
   makeLineContentWords,
+  makeLineInstrumental,
   makeLineNormal,
   makeLyric,
   makeTimeRange,
@@ -245,12 +246,17 @@ const readWords = (text: string, lineStart: number) => {
 /**
  * A line ends at the next line's start; without one, it ends at its final word's end.
  * An open word is closed by the next timed word, or by the line end, so every sung word stays inside the line.
+ * Empty timed rows represent instrumental time rather than sung content.
  */
 const readLine = (text: string, start: number, nextStart: number | undefined) => {
+  const trimmed = text.trim()
+  let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
+  if (trimmed === '') {
+    return makeLineInstrumental({ time: makeTimeRange({ start, end }) })
+  }
+
   const wordTimed = isWordTimed(text)
   const { drafts, closeSegment } = wordTimed ? readWords(text, start) : { drafts: [], closeSegment: () => {} }
-
-  let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
 
   // Without a later line, a final word carrying its own end bounds the line; otherwise it stays open.
   if (end === undefined) {
@@ -271,14 +277,14 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
   })
 
   const time = makeTimeRange({ start, end })
-  const content = wordTimed ? makeLineContentWords(words) : makeLineContentText(text.trim())
+  const content = wordTimed ? makeLineContentWords(words) : makeLineContentText(trimmed)
 
   return makeLineNormal({ time, content })
 }
 
 /**
  * Builds one line per timed row, so an annotation track reuses the original text's reading unchanged.
- * An empty timed row still yields a line, since it marks a gap rather than a parse failure.
+ * Empty timed rows become instrumental lines bounded by the next timestamp when one is usable.
  */
 const readLines = (timed: TimedLine[]): runtime.Line[] => {
   const lines: runtime.Line[] = []
@@ -314,7 +320,7 @@ const parseLrcText = (text: string): runtime.Lyric => {
 }
 
 /**
- * Source order, empty timed lines, and missing word times are preserved for model validation.
+ * Empty timed rows become instrumental lines; source order and missing word times remain for model validation.
  *
  * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
  *
