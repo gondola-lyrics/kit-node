@@ -54,7 +54,7 @@ jobs:
         id: release
         run: |
           version="${GITHUB_REF_NAME#v}"
-          npm run build-change-log -- "$version" --extract > "$RUNNER_TEMP/notes.md"
+          npm run --silent build-change-log -- "$version" --extract > "$RUNNER_TEMP/notes.md"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Release
