@@ -1,43 +1,49 @@
 <template>
-  <div :class="[$style.lyricLine, { [$style.backgroundLine]: background }]">
-    <div :class="$style.lineHeading">
-      <span :class="$style.lineTime">{{ formatRange(line.time) }}</span>
-      <span v-for="(performer, index) in performers" :key="index" :class="$style.performer">{{ performer }}</span>
-      <span v-for="(language, index) in line.languages" :key="`language-${index}`" :class="$style.lineLanguage">{{ language }}</span>
+  <div :class="[$style.lyricLine, { [$style.withMeta]: hasMeta, [$style.backgroundLine]: background }]">
+    <div v-if="hasMeta" :class="$style.lineMeta">
+      <span v-if="background" :class="$style.backgroundLabel">{{ t('result.background') }}</span>
+      <span v-if="line.time" :class="$style.lineTime">{{ formatRange(line.time) }}</span>
+      <div v-if="performers.length || line.languages.length" :class="$style.lineDetails">
+        <span v-for="(performer, index) in performers" :key="index" :class="[$style.performer, { [$style.identifier]: performer.fallback }]">{{
+          performer.text
+        }}</span>
+        <span v-for="(language, index) in line.languages" :key="`language-${index}`" :class="$style.lineLanguage">{{ language }}</span>
+      </div>
     </div>
+    <div :class="$style.lineBody">
+      <p v-if="instrumental" :class="$style.instrumental">{{ t('result.instrumental') }}</p>
+      <div v-else-if="words.length" :class="$style.words">
+        <template v-for="(word, index) in words" :key="index">
+          <span v-if="word.type === WordType.SPACE" :class="$style.wordSpace">{{ word.text }}</span>
+          <span v-else :class="[$style.word, { [$style.emphasized]: word.emphasized }]" :title="word.title">
+            <span v-for="(item, itemIndex) in word.rubies" :key="`ruby-${itemIndex}`" :class="$style.wordRuby" :title="item.title">{{
+              item.text
+            }}</span>
+            <span v-for="(item, itemIndex) in word.romans" :key="`roman-${itemIndex}`" :class="$style.wordRoman" :title="item.title">{{
+              item.text
+            }}</span>
+            <span
+              v-for="(item, itemIndex) in word.translations"
+              :key="`translation-${itemIndex}`"
+              :class="$style.wordTranslation"
+              :title="item.language"
+              >{{ item.text }}</span
+            >
+            <span :class="$style.wordText">{{ word.text }}</span>
+          </span>
+        </template>
+      </div>
+      <p v-else-if="text" :class="$style.plainText">{{ text }}</p>
+      <p v-else :class="$style.emptyLine">{{ t('result.emptyLine') }}</p>
 
-    <p v-if="instrumental" :class="$style.instrumental">{{ t('result.instrumental') }}</p>
-    <div v-else-if="words.length" :class="$style.words">
-      <template v-for="(word, index) in words" :key="index">
-        <span v-if="word.type === WordType.SPACE" :class="$style.wordSpace">{{ word.text }}</span>
-        <span v-else :class="[$style.word, { [$style.timed]: word.timed, [$style.emphasized]: word.emphasized }]" :title="word.title">
-          <span v-for="(item, itemIndex) in word.rubies" :key="`ruby-${itemIndex}`" :class="$style.wordRuby" :title="item.title">{{
-            item.text
-          }}</span>
-          <span v-for="(item, itemIndex) in word.romans" :key="`roman-${itemIndex}`" :class="$style.wordRoman" :title="item.title">{{
-            item.text
-          }}</span>
-          <span
-            v-for="(item, itemIndex) in word.translations"
-            :key="`translation-${itemIndex}`"
-            :class="$style.wordTranslation"
-            :title="item.language"
-            >{{ item.text }}</span
-          >
-          <span :class="$style.wordText">{{ word.text }}</span>
-        </span>
-      </template>
+      <div v-if="line.annotation?.romans.length || line.annotation?.translations.length" :class="$style.lineAnnotations">
+        <p v-for="(item, index) in line.annotation?.romans" :key="`roman-${index}`" :class="$style.lineRoman" :title="item.language">
+          {{ item.text }}
+        </p>
+        <p v-for="(item, index) in line.annotation?.translations" :key="`translation-${index}`" :title="item.language">{{ item.text }}</p>
+      </div>
     </div>
-    <p v-else-if="text" :class="$style.plainText">{{ text }}</p>
-    <p v-else :class="$style.emptyLine">{{ t('result.emptyLine') }}</p>
-
-    <div v-if="line.annotation?.romans.length || line.annotation?.translations.length" :class="$style.lineAnnotations">
-      <p v-for="(item, index) in line.annotation?.romans" :key="`roman-${index}`" :class="$style.lineRoman" :title="item.language">{{ item.text }}</p>
-      <p v-for="(item, index) in line.annotation?.translations" :key="`translation-${index}`" :title="item.language">{{ item.text }}</p>
-    </div>
-
     <div v-if="backgrounds.length" :class="$style.backgrounds">
-      <h4>{{ t('result.background') }}</h4>
       <LyricLine v-for="(item, index) in backgrounds" :key="index" :line="item" :agents="agents" background />
     </div>
   </div>
@@ -72,14 +78,18 @@ const text = computed(() => {
 
 const performers = computed(() => {
   return resolveLineAgents(props.line, props.agents).map((agent) => {
-    return (
-      agent.names
-        .map((name) => {
-          return name.text
-        })
-        .join(' / ') || agent.id
-    )
+    const name = agent.names
+      .map((item) => {
+        return item.text
+      })
+      .join(' / ')
+    // An unnamed agent falls back to its id, so the display marks it as an identifier rather than a name.
+    return { text: name || agent.id, fallback: name === '' }
   })
+})
+
+const hasMeta = computed(() => {
+  return Boolean(props.line.time || props.background || performers.value.length || props.line.languages.length)
 })
 
 const annotation = (item: WordAnnotationRoman | WordAnnotationRuby) => {
@@ -98,9 +108,8 @@ const words = computed(() => {
     return {
       type: word.type,
       text: word.text,
-      timed: word.time !== undefined,
       emphasized: word.emphasis?.value ?? false,
-      title: [formatRange(word.time), word.language].filter(Boolean).join(' · '),
+      title: [word.time ? formatRange(word.time) : undefined, word.language].filter(Boolean).join(' · '),
       rubies: (word.annotation?.rubies ?? []).map(annotation),
       romans: (word.annotation?.romans ?? []).map(annotation),
       translations: word.annotation?.translations ?? [],
@@ -115,32 +124,65 @@ const backgrounds = computed(() => {
 
 <style module lang="scss">
 .lyricLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 6px;
   min-width: 0;
 }
 
-.lineHeading {
+.lineBody {
+  min-width: 0;
+}
+
+.lineMeta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  margin-bottom: 6px;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.lineDetails {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.5;
 }
 
 .lineTime {
   color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  line-height: 1.6;
+  font: 10.5px / 1.7 var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: normal;
 }
 
 .performer {
+  max-width: 100%;
   padding: 1px 7px;
-  border: 1px solid var(--primary-soft);
+  border: 1px solid var(--line);
   border-radius: 3px;
+  background: var(--wash);
   color: var(--primary-deep);
-  font-size: 10px;
+  font-size: 10.5px;
   overflow-wrap: anywhere;
+}
+
+.identifier {
+  color: var(--muted);
+  font: 10px var(--mono);
+}
+
+.backgroundLabel {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  line-height: 1.5;
+  text-transform: uppercase;
 }
 
 .lineLanguage {
@@ -154,7 +196,7 @@ const backgrounds = computed(() => {
 .words {
   color: var(--text);
   font-size: 15px;
-  line-height: 1.9;
+  line-height: 1.8;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -172,26 +214,10 @@ const backgrounds = computed(() => {
   vertical-align: bottom;
   max-width: 100%;
 
-  &.timed {
-    .wordText {
-      border-bottom-color: var(--line);
-      border-bottom-style: dotted;
-    }
-
-    &:hover .wordText {
-      border-radius: 2px;
-      background: var(--primary-soft);
-    }
-  }
-
   &.emphasized .wordText {
     color: var(--primary-deep);
     font-weight: 700;
   }
-}
-
-.wordText {
-  border-bottom: 1px solid transparent;
 }
 
 .wordSpace {
@@ -227,18 +253,10 @@ const backgrounds = computed(() => {
   line-height: 1.8;
 }
 
-.instrumental {
-  padding: 6px 10px;
-  border-left: 2px solid var(--line);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
 .lineAnnotations {
   display: grid;
   gap: 3px;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
@@ -251,24 +269,37 @@ const backgrounds = computed(() => {
 }
 
 .backgrounds {
+  grid-column: 1 / -1;
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding-left: 14px;
-  border-left: 2px solid var(--line);
-
-  h4 {
-    margin: 0;
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 500;
-  }
+  gap: 8px;
+  margin-top: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
 }
 
 .backgroundLine {
   .plainText,
   .words {
     font-size: 13px;
+  }
+
+  .lineAnnotations {
+    font-size: 12px;
+  }
+}
+
+@container lyrics (min-width: 640px) {
+  .withMeta {
+    grid-template-columns: 132px minmax(0, 1fr);
+    column-gap: 16px;
+    align-items: start;
+  }
+
+  .lineMeta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding-top: 4px;
   }
 }
 </style>

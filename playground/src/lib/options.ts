@@ -1,9 +1,20 @@
-import type { LrcGenerateOptions, LrcParseOptions, TtmlGenerateOptions, TtmlParseOptions } from '@gondola-lyrics/kit'
+import type {
+  DeriveWordEmphasisOptions,
+  InsertInstrumentalLinesOptions,
+  LrcGenerateOptions,
+  LrcParseOptions,
+  TtmlGenerateOptions,
+  TtmlParseOptions,
+} from '@gondola-lyrics/kit'
 
 export interface PlaygroundOptions {
   parse: {
     lrc: Required<LrcParseOptions>
     ttml: Required<TtmlParseOptions>
+  }
+  transforms: {
+    instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
+    emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
   }
   generate: {
     lrc: Required<LrcGenerateOptions>
@@ -13,18 +24,22 @@ export interface PlaygroundOptions {
 
 export type OptionOverrides = {
   [Scope in keyof PlaygroundOptions]?: {
-    [Format in keyof PlaygroundOptions[Scope]]?: Partial<PlaygroundOptions[Scope][Format]>
+    [Group in keyof PlaygroundOptions[Scope]]?: Partial<PlaygroundOptions[Scope][Group]>
   }
 }
 
 /**
- * Mirror the format APIs while leaving source-dependent TTML defaults to the generator.
+ * Leave transforms opt-in and source-dependent TTML defaults to the generator.
  */
 export const createOptions = (): PlaygroundOptions => {
   return {
     parse: {
       lrc: { annotationTolerance: 0 },
       ttml: { language: '' },
+    },
+    transforms: {
+      instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
+      emphasis: { enabled: false, durationThreshold: 3000 },
     },
     generate: {
       lrc: {
@@ -54,6 +69,10 @@ const readBoolean = (value: unknown, fallback: boolean): boolean => {
   return typeof value === 'boolean' ? value : fallback
 }
 
+const isMilliseconds = (value: unknown, maximum = Number.MAX_SAFE_INTEGER): value is number => {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum
+}
+
 const readChoice = <Choice extends string>(value: unknown, choices: readonly Choice[], fallback: Choice): Choice => {
   return (
     choices.find((choice) => {
@@ -64,15 +83,18 @@ const readChoice = <Choice extends string>(value: unknown, choices: readonly Cho
 
 /**
  * Restore older or partial saved settings and isolate in-flight work from subsequent edits.
- * Empty numeric inputs fall back to exact annotation matching.
+ * Empty or invalid numeric inputs use their defaults; an unknown outro end stays unset.
  */
 export const readOptions = (value: unknown): PlaygroundOptions => {
   const defaults = createOptions()
   const saved = readObject(value)
   const parse = readObject(saved.parse)
+  const transforms = readObject(saved.transforms)
   const generate = readObject(saved.generate)
   const lrcParse = readObject(parse.lrc)
   const ttmlParse = readObject(parse.ttml)
+  const instrumental = readObject(transforms.instrumental)
+  const emphasis = readObject(transforms.emphasis)
   const lrcGenerate = readObject(generate.lrc)
   const ttmlGenerate = readObject(generate.ttml)
   const tolerance = lrcParse.annotationTolerance
@@ -85,6 +107,20 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
           typeof tolerance === 'number' && Number.isFinite(tolerance) ? Math.max(0, tolerance) : defaults.parse.lrc.annotationTolerance,
       },
       ttml: { language: readString(ttmlParse.language, defaults.parse.ttml.language).trim() },
+    },
+    transforms: {
+      instrumental: {
+        enabled: readBoolean(instrumental.enabled, defaults.transforms.instrumental.enabled),
+        minDuration: isMilliseconds(instrumental.minDuration) ? instrumental.minDuration : defaults.transforms.instrumental.minDuration,
+        minIntroDuration: isMilliseconds(instrumental.minIntroDuration)
+          ? instrumental.minIntroDuration
+          : defaults.transforms.instrumental.minIntroDuration,
+        endTime: isMilliseconds(instrumental.endTime, 2 ** 31 - 1) ? instrumental.endTime : undefined,
+      },
+      emphasis: {
+        enabled: readBoolean(emphasis.enabled, defaults.transforms.emphasis.enabled),
+        durationThreshold: isMilliseconds(emphasis.durationThreshold) ? emphasis.durationThreshold : defaults.transforms.emphasis.durationThreshold,
+      },
     },
     generate: {
       lrc: {
@@ -121,6 +157,8 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const defaults = createOptions()
   const lrcParse = pickOverrides(options.parse.lrc, defaults.parse.lrc)
   const ttmlParse = pickOverrides(options.parse.ttml, defaults.parse.ttml)
+  const instrumental = pickOverrides(options.transforms.instrumental, defaults.transforms.instrumental)
+  const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
   const lrcGenerate = pickOverrides(options.generate.lrc, defaults.generate.lrc)
   const ttmlGenerate = pickOverrides(options.generate.ttml, defaults.generate.ttml)
   const overrides: OptionOverrides = {}
@@ -129,6 +167,12 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
     overrides.parse = {
       ...(lrcParse ? { lrc: lrcParse } : {}),
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
+    }
+  }
+  if (instrumental || emphasis) {
+    overrides.transforms = {
+      ...(instrumental ? { instrumental } : {}),
+      ...(emphasis ? { emphasis } : {}),
     }
   }
   if (lrcGenerate || ttmlGenerate) {

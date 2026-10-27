@@ -1,33 +1,12 @@
-import type { Diagnostic, Lyric } from '@gondola-lyrics/model/runtime'
-import type { PlaygroundOptions } from '../lib/options'
+import type { PlaygroundForm, PlaygroundResult } from '../lib/playground'
 import type { MessageKey } from './useI18n'
 
-import { encode } from '@gondola-lyrics/model/runtime'
-import { computed, nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
+import { encode, validateLyric } from '@gondola-lyrics/model/runtime'
+import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
-import { generate, parse, parseLrc, parseTtml } from '@gondola-lyrics/kit'
+import { deriveWordEmphasis, insertInstrumentalLines, parse, parseLrc, parseTtml } from '@gondola-lyrics/kit'
 
 import { createOptions, getOptionOverrides, readOptions } from '../lib/options'
-
-interface FormState {
-  mode: 'auto' | 'lrc' | 'ttml'
-  autoContent: string
-  lrcContent: string
-  ttmlContent: string
-  translations: string
-  romans: string
-  options: PlaygroundOptions
-}
-
-interface ParsedResult {
-  lyric: Lyric
-  diagnostics: Diagnostic[]
-  elapsed: number
-  inputBytes: number
-  encodedBytes: number | null
-  encodingError: string
-  options: PlaygroundOptions
-}
 
 const STORAGE_KEY = 'gondola-playground-input-v1'
 const AUTO_PARSE_INTERVAL = 300
@@ -39,8 +18,8 @@ const readText = (saved: Record<string, unknown>, key: string): string => {
   return typeof value === 'string' ? value : ''
 }
 
-const readForm = (): FormState => {
-  const defaults: FormState = {
+const readForm = (): PlaygroundForm => {
+  const defaults: PlaygroundForm = {
     mode: 'auto',
     autoContent: '',
     lrcContent: '',
@@ -78,7 +57,7 @@ const readForm = (): FormState => {
  */
 export const useParser = () => {
   const form = reactive(readForm())
-  const result = shallowRef<ParsedResult | null>(null)
+  const result = shallowRef<PlaygroundResult | null>(null)
   const parsing = ref(false)
   const error = ref<MessageKey | ''>('')
   const errorDetail = ref('')
@@ -87,28 +66,6 @@ export const useParser = () => {
   let timer: ReturnType<typeof setTimeout> | undefined
   let queued = false
   let disposed = false
-
-  const json = computed(() => {
-    return result.value ? JSON.stringify(result.value.lyric, null, 2) : ''
-  })
-  const lrc = computed(() => {
-    return result.value ? generate(result.value.lyric, 'lrc', result.value.options.generate.lrc) : null
-  })
-  const ttml = computed(() => {
-    if (!result.value) {
-      return null
-    }
-
-    try {
-      const options = result.value.options.generate.ttml
-      return {
-        text: generate(result.value.lyric, 'ttml', { ...options, profile: options.profile === 'auto' ? undefined : options.profile }) ?? '',
-        error: '',
-      }
-    } catch (cause) {
-      return { text: '', error: cause instanceof Error ? cause.message : String(cause) }
-    }
-  })
 
   const cancelScheduledParse = () => {
     if (timer !== undefined) {
@@ -185,8 +142,16 @@ export const useParser = () => {
         error.value = 'error.unrecognized'
         return
       }
-      // The parser already canonicalized and validated, so the playground only inspects the result.
-      const { lyric, diagnostics } = parsed
+      // Restart from the parsed model so disabling a transform also removes its derived changes.
+      let lyric = parsed.lyric
+      const { instrumental, emphasis } = input.options.transforms
+      if (instrumental.enabled) {
+        lyric = insertInstrumentalLines(lyric, instrumental)
+      }
+      if (emphasis.enabled) {
+        lyric = deriveWordEmphasis(lyric, emphasis)
+      }
+      const diagnostics = lyric === parsed.lyric ? parsed.diagnostics : validateLyric(lyric)
       let encodedBytes: number | null = null
       let encodingError = ''
       try {
@@ -237,5 +202,5 @@ export const useParser = () => {
     cancelScheduledParse()
   })
 
-  return { form, result, parsing, error, errorDetail, storageAvailable, json, lrc, ttml }
+  return { form, result, parsing, error, errorDetail, storageAvailable }
 }
