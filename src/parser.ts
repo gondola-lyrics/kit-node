@@ -2,6 +2,6 @@ export type { LyricFormat, ParseResult, LrcParseInput, LrcParseOptions, TtmlProf
 
 export { detectFormat, parse, parseLrc, parseTtml } from './formats'
 
-export type { DeriveWordEmphasisOptions, InsertInstrumentalLinesOptions } from './transforms'
+export type { DeriveWordEmphasisOptions, ExtractBackgroundLinesOptions, InsertInstrumentalLinesOptions } from './transforms'
 
-export { deriveWordEmphasis, insertInstrumentalLines, stripBackgroundBrackets } from './transforms'
+export { deriveWordEmphasis, extractBackgroundLines, insertInstrumentalLines, stripBackgroundBrackets } from './transforms'

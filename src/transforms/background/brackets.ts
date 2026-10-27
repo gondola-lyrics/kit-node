@@ -4,26 +4,19 @@ import { WordType, makeLineContentText, makeLineContentWords } from '@gondola-ly
 
 import { mapShared } from '@root/utils'
 
-const OPEN_BRACKETS = new Set(['(', '（'])
-const CLOSE_BRACKETS = new Set([')', '）'])
-
-const isNormalWord = (word: runtime.Word) => {
-  return word.type === WordType.NORMAL
-}
+import { isCloseBracket, isNormalWord, isOpenBracket } from './utils'
 
 /**
- * Removes one leading bracket from the first sung word and one trailing bracket from the last.
+ * Removes one leading bracket from the first sung word and one trailing bracket from the last, so an inner pair stays as written.
  *
- * Only sung words count as an edge, so an inner pair stays as written.
- * Space words at the same edge are dropped with the bracket, since they only separated it from the main line.
- * A word left with no text is dropped too, as a sung word must carry something.
+ * Space words at the same edge go with the bracket, and a word left with no text goes too, since a sung word must carry something.
  */
 const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
   const firstIndex = words.findIndex(isNormalWord)
   const first = words[firstIndex]
   const last = words[words.findLastIndex(isNormalWord)]
-  const stripStart = first ? OPEN_BRACKETS.has(first.text.charAt(0)) : false
-  const stripEnd = last ? CLOSE_BRACKETS.has(last.text.charAt(last.text.length - 1)) : false
+  const stripStart = first ? isOpenBracket(first.text.charAt(0)) : false
+  const stripEnd = last ? isCloseBracket(last.text.charAt(last.text.length - 1)) : false
   if (!stripStart && !stripEnd) {
     return words
   }
@@ -60,8 +53,6 @@ const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
 }
 
 /**
- * Strips one layer of edge brackets from the content, returning `undefined` when nothing would remain.
- *
  * Plain text is read literally, so a source that padded it with spaces keeps them; only word content
  * treats space words as the structural separators they are.
  */
@@ -75,8 +66,8 @@ const stripContentBrackets = (content: runtime.LineContent | undefined): runtime
     if (!text) {
       return content
     }
-    const start = OPEN_BRACKETS.has(text.charAt(0)) ? 1 : 0
-    const end = CLOSE_BRACKETS.has(text.charAt(text.length - 1)) ? -1 : 0
+    const start = isOpenBracket(text.charAt(0)) ? 1 : 0
+    const end = isCloseBracket(text.charAt(text.length - 1)) ? -1 : 0
     if (!start && !end) {
       return content
     }
@@ -91,9 +82,6 @@ const stripContentBrackets = (content: runtime.LineContent | undefined): runtime
   return words.length ? makeLineContentWords(words) : undefined
 }
 
-/**
- * Strips the brackets of every background line, dropping the ones left with no content.
- */
 const stripLineBackgrounds = (line: runtime.Line): runtime.Line => {
   if (!line.backgrounds.length) {
     return line
