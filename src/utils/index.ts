@@ -1,4 +1,5 @@
 export * from './annotation'
+export * from './array'
 export * from './language'
 export * from './time'
 export * from './xml'

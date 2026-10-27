@@ -2,6 +2,8 @@ import type { runtime } from '@gondola-lyrics/model'
 
 import { LineType, WordType, makeWordEmphasis, validateTimeRange } from '@gondola-lyrics/model/runtime'
 
+import { mapShared } from '@root/utils'
+
 export interface DeriveWordEmphasisOptions {
   /**
    * Word duration must strictly exceed this threshold, expressed as a non-negative safe integer in milliseconds.
@@ -9,25 +11,6 @@ export interface DeriveWordEmphasisOptions {
    * @default 3000
    */
   durationThreshold?: number
-}
-
-/**
- * Preserves the input array when every element keeps its identity, so unchanged parent nodes can also be reused.
- *
- * The callback must leave inputs untouched and return the original element when unchanged.
- */
-const mapShared = <T>(items: T[], transform: (item: T) => T): T[] => {
-  let result = items
-  for (const [index, item] of items.entries()) {
-    const transformed = transform(item)
-    if (transformed !== item) {
-      if (result === items) {
-        result = [...items]
-      }
-      result[index] = transformed
-    }
-  }
-  return result
 }
 
 const deriveContentEmphasis = (content: runtime.LineContent | undefined, durationThreshold: number): runtime.LineContent | undefined => {
