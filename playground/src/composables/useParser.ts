@@ -4,7 +4,15 @@ import type { MessageKey } from './useI18n'
 import { encode, validateLyric } from '@gondola-lyrics/model/runtime'
 import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
-import { deriveWordEmphasis, insertInstrumentalLines, parse, parseLrc, parseTtml } from '@gondola-lyrics/kit'
+import {
+  deriveWordEmphasis,
+  extractBackgroundLines,
+  insertInstrumentalLines,
+  parse,
+  parseLrc,
+  parseTtml,
+  stripBackgroundBrackets,
+} from '@gondola-lyrics/kit'
 
 import { createOptions, getOptionOverrides, readOptions } from '../lib/options'
 
@@ -144,7 +152,13 @@ export const useParser = () => {
       }
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
-      const { instrumental, emphasis } = input.options.transforms
+      const { instrumental, emphasis, extract, brackets } = input.options.transforms
+      if (extract.enabled) {
+        lyric = extractBackgroundLines(lyric, extract)
+      }
+      if (brackets.enabled) {
+        lyric = stripBackgroundBrackets(lyric)
+      }
       if (instrumental.enabled) {
         lyric = insertInstrumentalLines(lyric, instrumental)
       }

@@ -109,6 +109,36 @@
                 :default-value="defaults.transforms.emphasis.durationThreshold"
               />
             </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
+                <input :id="id + '-extract'" v-model="options.transforms.extract.enabled" type="checkbox" />
+                <span>{{ t('settings.extractBackground') }}</span>
+              </label>
+              <div v-if="options.transforms.extract.enabled" :class="$style.fields">
+                <label :class="$style.check">
+                  <input :id="id + '-extract-full-line'" v-model="options.transforms.extract.fullLine" type="checkbox" />
+                  <span>{{ t('settings.extractFullLine') }}</span>
+                </label>
+                <label :class="$style.check">
+                  <input :id="id + '-extract-in-line'" v-model="options.transforms.extract.inLine" type="checkbox" />
+                  <span>{{ t('settings.extractInLine') }}</span>
+                </label>
+                <label :class="$style.check">
+                  <input :id="id + '-extract-cross-line'" v-model="options.transforms.extract.crossLine" type="checkbox" />
+                  <span>{{ t('settings.extractCrossLine') }}</span>
+                </label>
+                <small :class="$style.hint">{{ t('settings.extractHint') }}</small>
+              </div>
+            </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
+                <input :id="id + '-strip-brackets'" v-model="options.transforms.brackets.enabled" type="checkbox" />
+                <span>{{ t('settings.stripBrackets') }}</span>
+              </label>
+              <small v-if="options.transforms.brackets.enabled" :class="[$style.hint, $style.operationHint]">{{
+                t('settings.stripBracketsHint')
+              }}</small>
+            </div>
           </section>
           <section v-if="format" :class="$style.section" :aria-labelledby="id + '-generate-title'">
             <div :class="$style.header">
@@ -472,6 +502,20 @@ const resetGeneration = () => {
   max-width: 440px;
 }
 
+.hint {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* A hint sitting directly under an operation label stays in the first column, close to the checkbox. */
+.operationHint {
+  grid-column: auto;
+  padding-top: 0;
+}
+
 @container options (min-width: 330px) {
   .fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -493,6 +537,10 @@ const resetGeneration = () => {
 
     > :last-child {
       grid-column: auto;
+    }
+
+    > .hint {
+      grid-column: 1 / -1;
     }
 
     > div > label {

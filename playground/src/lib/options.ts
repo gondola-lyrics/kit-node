@@ -1,5 +1,6 @@
 import type {
   DeriveWordEmphasisOptions,
+  ExtractBackgroundLinesOptions,
   InsertInstrumentalLinesOptions,
   LrcGenerateOptions,
   LrcParseOptions,
@@ -15,6 +16,8 @@ export interface PlaygroundOptions {
   transforms: {
     instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
+    extract: Required<ExtractBackgroundLinesOptions> & { enabled: boolean }
+    brackets: { enabled: boolean }
   }
   generate: {
     lrc: Required<LrcGenerateOptions>
@@ -40,6 +43,8 @@ export const createOptions = (): PlaygroundOptions => {
     transforms: {
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
       emphasis: { enabled: false, durationThreshold: 3000 },
+      extract: { enabled: false, fullLine: true, inLine: true, crossLine: true },
+      brackets: { enabled: false },
     },
     generate: {
       lrc: {
@@ -95,6 +100,8 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const ttmlParse = readObject(parse.ttml)
   const instrumental = readObject(transforms.instrumental)
   const emphasis = readObject(transforms.emphasis)
+  const extract = readObject(transforms.extract)
+  const brackets = readObject(transforms.brackets)
   const lrcGenerate = readObject(generate.lrc)
   const ttmlGenerate = readObject(generate.ttml)
   const tolerance = lrcParse.annotationTolerance
@@ -120,6 +127,15 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       emphasis: {
         enabled: readBoolean(emphasis.enabled, defaults.transforms.emphasis.enabled),
         durationThreshold: isMilliseconds(emphasis.durationThreshold) ? emphasis.durationThreshold : defaults.transforms.emphasis.durationThreshold,
+      },
+      extract: {
+        enabled: readBoolean(extract.enabled, defaults.transforms.extract.enabled),
+        fullLine: readBoolean(extract.fullLine, defaults.transforms.extract.fullLine),
+        inLine: readBoolean(extract.inLine, defaults.transforms.extract.inLine),
+        crossLine: readBoolean(extract.crossLine, defaults.transforms.extract.crossLine),
+      },
+      brackets: {
+        enabled: readBoolean(brackets.enabled, defaults.transforms.brackets.enabled),
       },
     },
     generate: {
@@ -159,6 +175,8 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const ttmlParse = pickOverrides(options.parse.ttml, defaults.parse.ttml)
   const instrumental = pickOverrides(options.transforms.instrumental, defaults.transforms.instrumental)
   const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
+  const extract = pickOverrides(options.transforms.extract, defaults.transforms.extract)
+  const brackets = pickOverrides(options.transforms.brackets, defaults.transforms.brackets)
   const lrcGenerate = pickOverrides(options.generate.lrc, defaults.generate.lrc)
   const ttmlGenerate = pickOverrides(options.generate.ttml, defaults.generate.ttml)
   const overrides: OptionOverrides = {}
@@ -169,10 +187,12 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }
-  if (instrumental || emphasis) {
+  if (instrumental || emphasis || extract || brackets) {
     overrides.transforms = {
       ...(instrumental ? { instrumental } : {}),
       ...(emphasis ? { emphasis } : {}),
+      ...(extract ? { extract } : {}),
+      ...(brackets ? { brackets } : {}),
     }
   }
   if (lrcGenerate || ttmlGenerate) {
