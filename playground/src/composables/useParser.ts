@@ -8,6 +8,7 @@ import {
   deriveWordEmphasis,
   extractBackgroundLines,
   insertInstrumentalLines,
+  insertSpacesInLines,
   parse,
   parseLrc,
   parseTtml,
@@ -152,12 +153,15 @@ export const useParser = () => {
       }
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
-      const { instrumental, emphasis, extract, brackets } = input.options.transforms
+      const { instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
       if (extract.enabled) {
         lyric = extractBackgroundLines(lyric, extract)
       }
       if (brackets.enabled) {
         lyric = stripBackgroundBrackets(lyric)
+      }
+      if (spaces.enabled) {
+        lyric = insertSpacesInLines(lyric, spaces)
       }
       if (instrumental.enabled) {
         lyric = insertInstrumentalLines(lyric, instrumental)

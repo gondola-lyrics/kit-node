@@ -139,6 +139,26 @@
                 t('settings.stripBracketsHint')
               }}</small>
             </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
+                <input :id="id + '-insert-spaces'" v-model="options.transforms.spaces.enabled" type="checkbox" />
+                <span>{{ t('settings.insertSpaces') }}</span>
+              </label>
+              <div v-if="options.transforms.spaces.enabled" :class="$style.fields">
+                <label :class="$style.check">
+                  <input :id="id + '-space-annotations'" v-model="options.transforms.spaces.annotations" type="checkbox" />
+                  <span>{{ t('settings.spaceAnnotations') }}</span>
+                </label>
+                <fieldset :class="$style.ruleSet">
+                  <legend>{{ t('settings.spaceRules') }}</legend>
+                  <label v-for="rule in spaceRuleOptions" :key="rule.value" :class="$style.check">
+                    <input v-model="options.transforms.spaces.rules" type="checkbox" :value="rule.value" />
+                    <span>{{ rule.label }}</span>
+                  </label>
+                </fieldset>
+                <small :class="[$style.hint, $style.operationHint]">{{ t('settings.insertSpacesHint') }}</small>
+              </div>
+            </div>
           </section>
           <section v-if="format" :class="$style.section" :aria-labelledby="id + '-generate-title'">
             <div :class="$style.header">
@@ -239,9 +259,12 @@
 
 <script setup lang="ts">
 import type { LyricFormat } from '@gondola-lyrics/kit'
+import type { MessageKey } from '../composables/useI18n'
 import type { PlaygroundOptions } from '../lib/options'
 
 import { computed, ref } from 'vue'
+
+import { InsertSpacesRules } from '@gondola-lyrics/kit'
 
 import { useI18n } from '../composables/useI18n'
 import { createOptions, getOptionOverrides } from '../lib/options'
@@ -254,6 +277,23 @@ const { t } = useI18n()
 const opened = ref(false)
 const defaults = createOptions()
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
+const spaceRuleOptions = computed(() => {
+  const labels: Record<string, MessageKey> = {
+    [InsertSpacesRules.CJK_ENGLISH]: 'settings.spaceRuleCjkEnglish',
+    [InsertSpacesRules.CJK_NUMBER]: 'settings.spaceRuleCjkNumber',
+    [InsertSpacesRules.PUNCTUATION]: 'settings.spaceRulePunctuation',
+    [InsertSpacesRules.QUOTE]: 'settings.spaceRuleQuote',
+    [InsertSpacesRules.BRACKET_OUTSIDE]: 'settings.spaceRuleBracketOutside',
+    [InsertSpacesRules.MATH_OPERATOR]: 'settings.spaceRuleMathOperator',
+    [InsertSpacesRules.HYPHEN]: 'settings.spaceRuleHyphen',
+    [InsertSpacesRules.SLASH]: 'settings.spaceRuleSlash',
+    [InsertSpacesRules.COMPRESS_SPACES]: 'settings.spaceRuleCompressSpaces',
+    [InsertSpacesRules.TRIM_INSIDE_SYMBOLS]: 'settings.spaceRuleTrimInsideSymbols',
+  }
+  return Object.entries(labels).map(([value, key]) => {
+    return { value, label: t(key) }
+  })
+})
 
 const available = computed(() => {
   return props.scope === 'result' || props.format !== null
@@ -514,6 +554,24 @@ const resetGeneration = () => {
 .operationHint {
   grid-column: auto;
   padding-top: 0;
+}
+
+.ruleSet {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  gap: 0 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    margin-bottom: 2px;
+    padding: 0;
+    color: var(--muted);
+    font-size: 11px;
+  }
 }
 
 @container options (min-width: 330px) {

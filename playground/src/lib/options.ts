@@ -2,11 +2,17 @@ import type {
   DeriveWordEmphasisOptions,
   ExtractBackgroundLinesOptions,
   InsertInstrumentalLinesOptions,
+  InsertSpacesOptions,
+  InsertSpacesRule,
   LrcGenerateOptions,
   LrcParseOptions,
   TtmlGenerateOptions,
   TtmlParseOptions,
 } from '@gondola-lyrics/kit'
+
+import { InsertSpacesRules } from '@gondola-lyrics/kit'
+
+const ALL_SPACE_RULES = Object.values(InsertSpacesRules) as InsertSpacesRule[]
 
 export interface PlaygroundOptions {
   parse: {
@@ -18,6 +24,7 @@ export interface PlaygroundOptions {
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
     extract: Required<ExtractBackgroundLinesOptions> & { enabled: boolean }
     brackets: { enabled: boolean }
+    spaces: Required<Omit<InsertSpacesOptions, 'rules'>> & { enabled: boolean; rules: InsertSpacesRule[] }
   }
   generate: {
     lrc: Required<LrcGenerateOptions>
@@ -45,6 +52,7 @@ export const createOptions = (): PlaygroundOptions => {
       emphasis: { enabled: false, durationThreshold: 3000 },
       extract: { enabled: false, fullLine: true, inLine: true, crossLine: true },
       brackets: { enabled: false },
+      spaces: { enabled: false, annotations: true, rules: [...ALL_SPACE_RULES] },
     },
     generate: {
       lrc: {
@@ -87,6 +95,26 @@ const readChoice = <Choice extends string>(value: unknown, choices: readonly Cho
 }
 
 /**
+ * Reports whether a rule list already covers every rule, in which case there is nothing to persist.
+ */
+const isDefaultRules = (rules: InsertSpacesRule[]) => {
+  return rules.length === ALL_SPACE_RULES.length
+}
+
+/**
+ * Keeps the saved rules that are still known, falling back to every rule when none survive.
+ */
+const readRules = (value: unknown): InsertSpacesRule[] => {
+  if (!Array.isArray(value)) {
+    return [...ALL_SPACE_RULES]
+  }
+  const kept = value.filter((item): item is InsertSpacesRule => {
+    return typeof item === 'string' && ALL_SPACE_RULES.includes(item as InsertSpacesRule)
+  })
+  return kept.length ? kept : [...ALL_SPACE_RULES]
+}
+
+/**
  * Restore older or partial saved settings and isolate in-flight work from subsequent edits.
  * Empty or invalid numeric inputs use their defaults; an unknown outro end stays unset.
  */
@@ -102,6 +130,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const emphasis = readObject(transforms.emphasis)
   const extract = readObject(transforms.extract)
   const brackets = readObject(transforms.brackets)
+  const spaces = readObject(transforms.spaces)
   const lrcGenerate = readObject(generate.lrc)
   const ttmlGenerate = readObject(generate.ttml)
   const tolerance = lrcParse.annotationTolerance
@@ -136,6 +165,11 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       },
       brackets: {
         enabled: readBoolean(brackets.enabled, defaults.transforms.brackets.enabled),
+      },
+      spaces: {
+        enabled: readBoolean(spaces.enabled, defaults.transforms.spaces.enabled),
+        annotations: readBoolean(spaces.annotations, defaults.transforms.spaces.annotations),
+        rules: readRules(spaces.rules),
       },
     },
     generate: {
@@ -177,6 +211,8 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
   const extract = pickOverrides(options.transforms.extract, defaults.transforms.extract)
   const brackets = pickOverrides(options.transforms.brackets, defaults.transforms.brackets)
+  const spaces = pickOverrides({ ...options.transforms.spaces, rules: undefined }, { ...defaults.transforms.spaces, rules: undefined })
+  const spaceRules = isDefaultRules(options.transforms.spaces.rules) ? undefined : { rules: options.transforms.spaces.rules }
   const lrcGenerate = pickOverrides(options.generate.lrc, defaults.generate.lrc)
   const ttmlGenerate = pickOverrides(options.generate.ttml, defaults.generate.ttml)
   const overrides: OptionOverrides = {}
@@ -187,12 +223,13 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }
-  if (instrumental || emphasis || extract || brackets) {
+  if (instrumental || emphasis || extract || brackets || spaces || spaceRules) {
     overrides.transforms = {
       ...(instrumental ? { instrumental } : {}),
       ...(emphasis ? { emphasis } : {}),
       ...(extract ? { extract } : {}),
       ...(brackets ? { brackets } : {}),
+      ...(spaces || spaceRules ? { spaces: { ...spaces, ...spaceRules } } : {}),
     }
   }
   if (lrcGenerate || ttmlGenerate) {
