@@ -33,48 +33,69 @@ export interface InsertSpacesOptions {
  *
  * Every non-space character of the original survives in order, so walking both strings keeps each word's time,
  * language and annotation while the inserted spaces become their own words.
+ * A word whose characters stay adjacent in the rewrite is kept whole, so only a word the space actually cuts is split.
  */
 const alignWords = (words: runtime.Word[], text: string) => {
-  const pieces = words.flatMap((word) => {
-    if (!isNormalWord(word)) {
-      return []
-    }
-    return [...word.text].map((char) => {
-      return { char, word }
-    })
-  })
-
+  const source = words.filter(isNormalWord)
   const result: runtime.Word[] = []
-  let index = 0
-  let pending = ''
+  let cursor = 0
 
-  const flush = () => {
-    if (pending) {
-      result.push(makeWordSpace({ text: pending }))
-      pending = ''
+  const takeSpaces = () => {
+    let spaces = ''
+    while (text[cursor] === ' ') {
+      spaces += ' '
+      cursor += 1
     }
+    return spaces
   }
 
-  for (const char of text) {
-    if (char === ' ') {
-      pending += char
+  for (const word of source) {
+    const spaces = takeSpaces()
+    if (spaces) {
+      result.push(makeWordSpace({ text: spaces }))
+    }
+
+    // A word the rewrite left intact keeps its identity, including any annotation and emphasis.
+    if (text.startsWith(word.text, cursor)) {
+      result.push(word)
+      cursor += word.text.length
       continue
     }
 
-    const piece = pieces[index]
-    // A rewrite that changed anything but spacing cannot be mapped back, so the caller keeps the original words.
-    if (!piece || piece.char !== char) {
-      return undefined
+    // The rewrite split this word, so each piece carries the slice it stands for.
+    let remaining = word.text
+    while (remaining) {
+      let taken = 0
+      while (taken < remaining.length && text[cursor + taken] === remaining[taken]) {
+        taken += 1
+      }
+      if (taken === 0) {
+        return undefined
+      }
+      result.push({ ...word, text: remaining.slice(0, taken) })
+      cursor += taken
+      remaining = remaining.slice(taken)
+      if (!remaining) {
+        break
+      }
+      const split = takeSpaces()
+      if (!split) {
+        // Nothing separates the pieces, so the rewrite changed more than spacing.
+        return undefined
+      }
+      result.push(makeWordSpace({ text: split }))
     }
-    index += 1
-    flush()
-    result.push({ ...piece.word, text: char })
   }
 
-  if (index !== pieces.length) {
+  const tail = takeSpaces()
+  if (tail) {
+    result.push(makeWordSpace({ text: tail }))
+  }
+
+  // A leftover character means the rewrite changed something other than spacing, so the caller keeps the original words.
+  if (cursor !== text.length) {
     return undefined
   }
-  flush()
   return result
 }
 
