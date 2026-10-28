@@ -1,3 +1,28 @@
+## v0.4.0 (2026-10-28)
+
+### Feature
+
+- transform-space
+  - add missing space insertion helper ([b1789bf](https://github.com/gondola-lyrics/kit-node/commit/b1789bfbb416840125c740eb8d103eae931bd608))
+- transform-background
+  - add background line extraction helper ([25678b6](https://github.com/gondola-lyrics/kit-node/commit/25678b6ea21c3d76d6c8c626595ef34fdf84924d))
+  - add background bracket stripping helper ([646aedc](https://github.com/gondola-lyrics/kit-node/commit/646aedcc2095c0f5e154f052fefe0f1e9ff4b2e3))
+- transform-emphasis
+  - add word emphasis derivation helper ([baf5e47](https://github.com/gondola-lyrics/kit-node/commit/baf5e47f723195a273b0f589c28d50f052c9b0a6))
+- transform-instrumental
+  - add instrumental line insertion helper ([21b5147](https://github.com/gondola-lyrics/kit-node/commit/21b5147cfc366a57f1ba14e3da97cb6f873db071))
+
+### Fix
+
+- transform-space
+  - keep words intact when inserting spaces ([f7ab0ef](https://github.com/gondola-lyrics/kit-node/commit/f7ab0ef58f05a8f376d7414366d8250aca609d69))
+- format-lrc
+  - treat empty timed lines as instrumental breaks ([15c10d4](https://github.com/gondola-lyrics/kit-node/commit/15c10d47ad1d24c404a5ab316179b71fa38d9601))
+
+### Document
+
+- update support formats ([ae73460](https://github.com/gondola-lyrics/kit-node/commit/ae73460fda58a8ce6e25bf0b9f1eeba92afad680))
+
 ## v0.3.0 (2026-10-25)
 
 ### Feature
