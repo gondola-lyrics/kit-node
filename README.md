@@ -10,9 +10,10 @@ npm install @gondola-lyrics/kit
 
 ## Supports
 
-| Format | Parse | Generate | Annotation tracks | Notes                                                                |
-| ------ | ----- | -------- | ----------------- | -------------------------------------------------------------------- |
-| LRC    | ✅    | ✅       | ✅                | Line and enhanced word timing, metadata, translations, romanizations |
+| Format | Line level | Word level | Annotation | Meta |
+| ------ | ---------- | ---------- | ---------- | ---- |
+| LRC    | ✅         | ✅         | ✅         | ✅   |
+| TTML   | ✅         | ✅         | ✅         | ✅   |
 
 ## Usage
 
