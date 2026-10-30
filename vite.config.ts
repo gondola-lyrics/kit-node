@@ -1,7 +1,6 @@
-import dts from 'vite-plugin-dts'
-
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
+import dts from 'vite-plugin-dts'
 
 const root = import.meta.dirname
 const src = resolve(root, 'src')
@@ -11,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@root': src,
+      '@rules': resolve(root, 'rules'),
     },
   },
   plugins: [
@@ -41,8 +41,11 @@ export default defineConfig({
     },
     rollupOptions: {
       // Match entry modules by absolute path to avoid treating unrelated relative imports as public entries.
-      external: (id) =>
-        /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator'),
+      external: (id) => {
+        return (
+          /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator')
+        )
+      },
       // Allow shared modules in entry chunks to avoid emitting extra shared chunks.
       preserveEntrySignatures: 'allow-extension',
       output: {

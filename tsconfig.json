@@ -1,19 +1,21 @@
 {
   "compilerOptions": {
     "target": "esnext",
+    "types": ["node"],
     "lib": ["esnext"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "declaration": true,
+    "resolveJsonModule": true,
     "removeComments": false,
     "paths": {
-      "@root/*": ["./src/*"]
+      "@root/*": ["./src/*"],
+      "@rules/*": ["./rules/*"]
     }
   },
   "include": ["src", "script", "vite.config.ts"]
