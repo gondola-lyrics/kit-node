@@ -1,6 +1,7 @@
 import type {
   DeriveWordEmphasisOptions,
   ExtractBackgroundLinesOptions,
+  ExtractCreditsOptions,
   InsertInstrumentalLinesOptions,
   InsertSpacesOptions,
   InsertSpacesRule,
@@ -10,7 +11,7 @@ import type {
   TtmlParseOptions,
 } from '@gondola-lyrics/kit'
 
-import { InsertSpacesRules } from '@gondola-lyrics/kit'
+import { DEFAULT_CREDIT_NAME_SEPARATORS, InsertSpacesRules } from '@gondola-lyrics/kit'
 
 const ALL_SPACE_RULES = Object.values(InsertSpacesRules) as InsertSpacesRule[]
 
@@ -20,6 +21,7 @@ export interface PlaygroundOptions {
     ttml: Required<TtmlParseOptions>
   }
   transforms: {
+    credits: Required<ExtractCreditsOptions> & { enabled: boolean }
     instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
     extract: Required<ExtractBackgroundLinesOptions> & { enabled: boolean }
@@ -48,6 +50,7 @@ export const createOptions = (): PlaygroundOptions => {
       ttml: { language: '' },
     },
     transforms: {
+      credits: { enabled: false, removeSourceLines: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
       emphasis: { enabled: false, durationThreshold: 3000 },
       extract: { enabled: false, fullLine: true, inLine: true, crossLine: true },
@@ -87,19 +90,13 @@ const isMilliseconds = (value: unknown, maximum = Number.MAX_SAFE_INTEGER): valu
 }
 
 const readChoice = <Choice extends string>(value: unknown, choices: readonly Choice[], fallback: Choice): Choice => {
-  return (
-    choices.find((choice) => {
-      return choice === value
-    }) ?? fallback
-  )
+  return choices.find((choice) => choice === value) ?? fallback
 }
 
 /**
  * Reports whether a rule list already covers every rule, in which case there is nothing to persist.
  */
-const isDefaultRules = (rules: InsertSpacesRule[]) => {
-  return rules.length === ALL_SPACE_RULES.length
-}
+const isDefaultRules = (rules: InsertSpacesRule[]) => rules.length === ALL_SPACE_RULES.length
 
 /**
  * Keeps the saved rules that are still known, falling back to every rule when none survive.
@@ -115,6 +112,23 @@ const readRules = (value: unknown): InsertSpacesRule[] => {
 }
 
 /**
+ * Whitespace is significant in literal separators, so only empty or multiline strings are discarded.
+ */
+const readNameSeparators = (value: unknown, fallback: readonly string[]): string[] => {
+  if (!Array.isArray(value)) {
+    return [...fallback]
+  }
+  const separators = [
+    ...new Set(
+      value.filter((item): item is string => {
+        return typeof item === 'string' && item !== '' && !/[\r\n]/.test(item)
+      }),
+    ),
+  ]
+  return value.length > 0 && separators.length === 0 ? [...fallback] : separators
+}
+
+/**
  * Restore older or partial saved settings and isolate in-flight work from subsequent edits.
  * Empty or invalid numeric inputs use their defaults; an unknown outro end stays unset.
  */
@@ -126,6 +140,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const generate = readObject(saved.generate)
   const lrcParse = readObject(parse.lrc)
   const ttmlParse = readObject(parse.ttml)
+  const credits = readObject(transforms.credits)
   const instrumental = readObject(transforms.instrumental)
   const emphasis = readObject(transforms.emphasis)
   const extract = readObject(transforms.extract)
@@ -145,6 +160,11 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       ttml: { language: readString(ttmlParse.language, defaults.parse.ttml.language).trim() },
     },
     transforms: {
+      credits: {
+        enabled: readBoolean(credits.enabled, defaults.transforms.credits.enabled),
+        removeSourceLines: readBoolean(credits.removeSourceLines, defaults.transforms.credits.removeSourceLines),
+        nameSeparators: readNameSeparators(credits.nameSeparators, defaults.transforms.credits.nameSeparators),
+      },
       instrumental: {
         enabled: readBoolean(instrumental.enabled, defaults.transforms.instrumental.enabled),
         minDuration: isMilliseconds(instrumental.minDuration) ? instrumental.minDuration : defaults.transforms.instrumental.minDuration,
@@ -207,6 +227,15 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const defaults = createOptions()
   const lrcParse = pickOverrides(options.parse.lrc, defaults.parse.lrc)
   const ttmlParse = pickOverrides(options.parse.ttml, defaults.parse.ttml)
+  const credits = pickOverrides(
+    { ...options.transforms.credits, nameSeparators: undefined },
+    { ...defaults.transforms.credits, nameSeparators: undefined },
+  )
+  const separators = options.transforms.credits.nameSeparators
+  const defaultSeparators = defaults.transforms.credits.nameSeparators
+  const isDefaultSeparators =
+    separators.length === defaultSeparators.length && separators.every((separator, index) => separator === defaultSeparators[index])
+  const creditSeparators = isDefaultSeparators ? undefined : { nameSeparators: separators }
   const instrumental = pickOverrides(options.transforms.instrumental, defaults.transforms.instrumental)
   const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
   const extract = pickOverrides(options.transforms.extract, defaults.transforms.extract)
@@ -223,8 +252,9 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }
-  if (instrumental || emphasis || extract || brackets || spaces || spaceRules) {
+  if (credits || creditSeparators || instrumental || emphasis || extract || brackets || spaces || spaceRules) {
     overrides.transforms = {
+      ...(credits || creditSeparators ? { credits: { ...credits, ...creditSeparators } } : {}),
       ...(instrumental ? { instrumental } : {}),
       ...(emphasis ? { emphasis } : {}),
       ...(extract ? { extract } : {}),

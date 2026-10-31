@@ -26,7 +26,10 @@
           </dd>
         </template>
         <template v-for="(row, index) in metadata" :key="index">
-          <dt :class="[{ [$style.raw]: row.raw }, { [$style.sectionStart]: index === 0 && hasLeadingRows }]">{{ row.label }}</dt>
+          <dt :class="[{ [$style.raw]: row.raw }, { [$style.sectionStart]: index === 0 && hasLeadingRows }]">
+            {{ row.label }}
+            <span v-if="row.detail" :class="$style.detail">{{ row.detail }}</span>
+          </dt>
           <dd :class="{ [$style.sectionStart]: index === 0 && hasLeadingRows }">
             <span v-for="(value, valueIndex) in row.values" :key="valueIndex" :class="$style.value" :title="value.language">{{ value.text }}</span>
           </dd>
@@ -48,6 +51,7 @@
 import type { Lyric, Text } from '@gondola-lyrics/model/runtime'
 import type { MessageKey } from '../composables/useI18n'
 
+import { CreditRole } from '@gondola-lyrics/model/runtime'
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -58,8 +62,20 @@ import LyricLine from './lyric-line.vue'
 interface MetadataRow {
   label: string
   values: { text: string; language?: string }[]
+  detail?: string
   raw?: boolean
 }
+
+const CREDIT_ROLE_LABELS = new Map<CreditRole, MessageKey>([
+  [CreditRole.OTHER, 'meta.creditOther'],
+  [CreditRole.LYRICIST, 'meta.creditLyricist'],
+  [CreditRole.COMPOSER, 'meta.creditComposer'],
+  [CreditRole.ARRANGER, 'meta.creditArranger'],
+  [CreditRole.PRODUCER, 'meta.creditProducer'],
+  [CreditRole.PERFORMER, 'meta.creditPerformer'],
+  [CreditRole.MIXER, 'meta.creditMixer'],
+  [CreditRole.MASTERING, 'meta.creditMastering'],
+])
 
 const props = defineProps<{ lyric: Lyric }>()
 const { t } = useI18n()
@@ -77,9 +93,7 @@ const metadata = computed(() => {
     }
     rows.push({
       label: t(key),
-      values: values.map((value) => {
-        return { text: value.text, language: value.language }
-      }),
+      values: values.map((value) => ({ text: value.text, language: value.language })),
     })
   }
   const pushValue = (label: string, text: string, raw = false) => {
@@ -90,6 +104,17 @@ const metadata = computed(() => {
   pushTexts('meta.artist', meta.artists)
   pushTexts('meta.album', meta.albums)
   pushTexts('meta.author', meta.authors)
+  for (const credit of meta.credits) {
+    if (!credit.names.length) {
+      continue
+    }
+    const label = t(CREDIT_ROLE_LABELS.get(credit.role) ?? 'meta.credit')
+    rows.push({
+      label,
+      detail: credit.raw && credit.raw !== label ? credit.raw : undefined,
+      values: credit.names.map((name) => ({ text: name.text, language: name.language })),
+    })
+  }
   if (meta.duration !== undefined) {
     pushValue(t('meta.duration'), formatTime(meta.duration))
   }
@@ -102,9 +127,7 @@ const metadata = computed(() => {
   if (meta.isrcs.length) {
     rows.push({
       label: 'ISRC',
-      values: meta.isrcs.map((text) => {
-        return { text }
-      }),
+      values: meta.isrcs.map((text) => ({ text })),
     })
   }
   // Repeated unknown keys describe one field, so they share a row instead of repeating the label.
@@ -125,11 +148,7 @@ const metadata = computed(() => {
 
 const performers = computed(() => {
   return props.lyric.agents.map((agent) => {
-    const name = agent.names
-      .map((item) => {
-        return item.text
-      })
-      .join(' / ')
+    const name = agent.names.map((item) => item.text).join(' / ')
     // An unnamed agent falls back to its id, so the display marks it as an identifier rather than a name.
     return { text: name || agent.id, fallback: name === '' }
   })
@@ -219,6 +238,16 @@ const hasLeadingRows = computed(() => {
 /* The first row of the sheet needs no leading space. */
 .aligned {
   padding-top: 0;
+}
+
+.detail {
+  display: block;
+  max-width: 160px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .value {

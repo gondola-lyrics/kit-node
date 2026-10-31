@@ -1,6 +1,5 @@
-import vue from '@vitejs/plugin-vue'
-
 import { resolve } from 'node:path'
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
 const root = import.meta.dirname
@@ -14,6 +13,7 @@ export default defineConfig({
     tsconfigPaths: true,
     alias: {
       '@gondola-lyrics/kit': resolve(repository, 'src'),
+      '@rules': resolve(repository, 'rules'),
     },
   },
   optimizeDeps: {
