@@ -1,5 +1,6 @@
 export * from './annotation'
 export * from './array'
 export * from './language'
+export * from './rules'
 export * from './time'
 export * from './xml'
