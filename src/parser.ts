@@ -9,14 +9,17 @@ export type {
   InsertInstrumentalLinesOptions,
   InsertSpacesOptions,
   InsertSpacesRule,
+  RemoveNonLyricLinesOptions,
 } from './transforms'
 
 export {
   DEFAULT_CREDIT_NAME_SEPARATORS,
   InsertSpacesRules,
+  NON_LYRIC_CATEGORIES,
   deriveWordEmphasis,
   extractBackgroundLines,
   extractCredits,
+  removeNonLyricLines,
   stripBackgroundBrackets,
   insertInstrumentalLines,
   insertSpacesInLines,

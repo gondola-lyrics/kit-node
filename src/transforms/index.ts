@@ -1,5 +1,6 @@
 export * from './background'
 export * from './credits'
 export * from './emphasis'
+export * from './filters'
 export * from './instrumental'
 export * from './space'
