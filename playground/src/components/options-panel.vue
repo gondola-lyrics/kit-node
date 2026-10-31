@@ -67,6 +67,39 @@
             </div>
             <div :class="$style.operation">
               <label :class="$style.check">
+                <input :id="id + '-credits'" v-model="options.transforms.credits.enabled" type="checkbox" />
+                <span>{{ t('settings.extractCredits') }}</span>
+              </label>
+              <div v-if="options.transforms.credits.enabled" :class="$style.fields">
+                <label :class="$style.check">
+                  <input
+                    :id="id + '-credit-source-lines'"
+                    v-model="options.transforms.credits.removeSourceLines"
+                    type="checkbox"
+                    :aria-describedby="id + '-credit-removal-hint'"
+                  />
+                  <span>{{ t('settings.removeCreditLines') }}</span>
+                </label>
+                <div :class="[$style.field, $style.creditSeparators]">
+                  <label :for="id + '-credit-name-separators'">{{ t('settings.creditNameSeparators') }}</label>
+                  <textarea
+                    :id="id + '-credit-name-separators'"
+                    v-model="creditNameSeparators"
+                    rows="3"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    :aria-describedby="id + '-credit-separators-hint'"
+                    @input="updateCreditSeparators"
+                    @blur="creditNameSeparators = options.transforms.credits.nameSeparators.join('\n')"
+                  ></textarea>
+                  <small :id="id + '-credit-separators-hint'">{{ t('settings.creditNameSeparatorsHint') }}</small>
+                </div>
+                <small :id="id + '-credit-removal-hint'" :class="$style.hint">{{ t('settings.removeCreditLinesHint') }}</small>
+              </div>
+            </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
                 <input :id="id + '-instrumental'" v-model="options.transforms.instrumental.enabled" type="checkbox" />
                 <span>{{ t('settings.insertInstrumental') }}</span>
               </label>
@@ -262,7 +295,7 @@ import type { LyricFormat } from '@gondola-lyrics/kit'
 import type { MessageKey } from '../composables/useI18n'
 import type { PlaygroundOptions } from '../lib/options'
 
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { InsertSpacesRules } from '@gondola-lyrics/kit'
 
@@ -277,6 +310,34 @@ const { t } = useI18n()
 const opened = ref(false)
 const defaults = createOptions()
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
+const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
+
+const readCreditSeparators = (value: string): string[] => {
+  return [...new Set(value.split(/\r\n?|\n/).filter((separator) => separator !== ''))]
+}
+
+const updateCreditSeparators = (event: Event) => {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return
+  }
+  creditNameSeparators.value = target.value
+  options.value.transforms.credits.nameSeparators = readCreditSeparators(target.value)
+}
+
+watch(
+  () => options.value.transforms.credits.nameSeparators,
+  (separators) => {
+    const draft = readCreditSeparators(creditNameSeparators.value)
+    const hasSeparatorChanges = draft.length !== separators.length || draft.some((separator, index) => separator !== separators[index])
+    // Keep editing newlines while the draft still represents the stored separators.
+    if (hasSeparatorChanges) {
+      creditNameSeparators.value = separators.join('\n')
+    }
+  },
+  { deep: true },
+)
+
 const spaceRuleOptions = computed(() => {
   const labels: Record<string, MessageKey> = {
     [InsertSpacesRules.CJK_ENGLISH]: 'settings.spaceRuleCjkEnglish',
@@ -290,24 +351,18 @@ const spaceRuleOptions = computed(() => {
     [InsertSpacesRules.COMPRESS_SPACES]: 'settings.spaceRuleCompressSpaces',
     [InsertSpacesRules.TRIM_INSIDE_SYMBOLS]: 'settings.spaceRuleTrimInsideSymbols',
   }
-  return Object.entries(labels).map(([value, key]) => {
-    return { value, label: t(key) }
-  })
+  return Object.entries(labels).map(([value, key]) => ({ value, label: t(key) }))
 })
 
 const available = computed(() => {
   return props.scope === 'result' || props.format !== null
 })
-const overrides = computed(() => {
-  return getOptionOverrides(options.value)
-})
+const overrides = computed(() => getOptionOverrides(options.value))
 const parseChanges = computed(() => {
   return props.format ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
 })
 const transformChanges = computed(() => {
-  return Object.values(overrides.value?.transforms ?? {}).reduce((count, group) => {
-    return count + Object.keys(group).length
-  }, 0)
+  return Object.values(overrides.value?.transforms ?? {}).reduce((count, group) => count + Object.keys(group).length, 0)
 })
 const generateChanges = computed(() => {
   return props.format ? Object.keys(overrides.value?.generate?.[props.format] ?? {}).length : 0
@@ -542,6 +597,11 @@ const resetGeneration = () => {
   max-width: 440px;
 }
 
+.creditSeparators {
+  grid-column: 1 / -1;
+  max-width: 440px;
+}
+
 .hint {
   grid-column: 1 / -1;
   color: var(--muted);
@@ -636,7 +696,8 @@ const resetGeneration = () => {
   }
 
   :global(input),
-  :global(select) {
+  :global(select),
+  :global(textarea) {
     width: 100%;
     min-width: 0;
     min-height: 36px;
@@ -648,8 +709,14 @@ const resetGeneration = () => {
     font-size: 12px;
   }
 
-  :global(input) {
+  :global(input),
+  :global(textarea) {
     font-family: var(--mono);
+  }
+
+  :global(textarea) {
+    resize: vertical;
+    line-height: 1.6;
   }
 
   :global(input[aria-invalid='true']) {
