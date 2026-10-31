@@ -244,9 +244,8 @@ const readWords = (text: string, lineStart: number) => {
 }
 
 /**
- * A line ends at the next line's start; without one, it ends at its final word's end.
- * An open word is closed by the next timed word, or by the line end, so every sung word stays inside the line.
- * Empty timed rows represent instrumental time rather than sung content.
+ * Explicit word ranges can extend past the next line's start, so the inferred end covers both.
+ * A trailing open segment uses that end when it is known.
  */
 const readLine = (text: string, start: number, nextStart: number | undefined) => {
   const trimmed = text.trim()
@@ -262,6 +261,14 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
   if (end === undefined) {
     const last = [...drafts].reverse().find((draft) => !draft.space && draft.start !== undefined)
     end = last?.end
+  }
+
+  if (end !== undefined) {
+    for (const draft of drafts) {
+      if (draft.end !== undefined) {
+        end = Math.max(end, draft.end)
+      }
+    }
   }
 
   // Earlier segments were closed by their next tag, so this only closes the final one.
