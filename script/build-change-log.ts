@@ -5,6 +5,7 @@
  *   node script/build-change-log.ts <version> [--dry-run]
  *   node script/build-change-log.ts <version> --extract
  *   node script/build-change-log.ts <version> --check-bump
+ *   node script/build-change-log.ts --rebuild
  */
 
 import { execFileSync } from 'node:child_process'
@@ -27,18 +28,19 @@ const TAG_PREFIX = 'v'
 const EXCLUDED_SCOPES = new Set(['playground'])
 
 const TYPE_TITLES = new Map([
-  ['feat', 'Feature'],
-  ['fix', 'Fix'],
+  ['feat', 'Features'],
+  ['fix', 'Fixes'],
   ['perf', 'Performance'],
-  ['refactor', 'Refactor'],
-  ['revert', 'Revert'],
-  ['docs', 'Document'],
+  ['refactor', 'Refactoring'],
+  ['revert', 'Reverts'],
+  ['docs', 'Documentation'],
 ])
 
 const SUBJECT_PATTERN = /^(?<kind>[a-z]+)(?:\((?<scope>[\w-]+)\))?: (?<message>.+)$/
 const BREAKING_PATTERN = /^breaking:\s*(?<text>.+)$/i
 const GITHUB_PATTERN = /github\.com[:/](?<owner>[^/]+)\/(?<name>[^/]+?)(?:\.git)?\/?$/
 const RECORDED_PATTERN = /^## v(?<version>\S+) \(/
+const RELEASE_HEADING_PATTERN = /^## v(?<version>\S+) \((?<date>\d{4}-\d{2}-\d{2})\)$/
 const SEMVER_PATTERN =
   /^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?<build>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
 
@@ -46,7 +48,9 @@ type VersionIdentifier = readonly [kind: number, value: number, text: string]
 
 interface VersionKey {
   core: readonly [number, number, number]
-  /** `null` marks a release, which sorts after every prerelease of the same core. */
+  /**
+   * `null` marks a release, which sorts after every prerelease of the same core.
+   */
   prerelease: readonly VersionIdentifier[] | null
 }
 
@@ -211,8 +215,8 @@ const previousTag = (version: string): string | null => {
   return `${TAG_PREFIX}${latest}`
 }
 
-const collectCommits = (since: string | null): Commit[] => {
-  const revision = since === null ? 'HEAD' : `${since}..HEAD`
+const collectCommits = (since: string | null, until = 'HEAD'): Commit[] => {
+  const revision = since === null ? until : `${since}..${until}`
   const output = git('log', revision, '--format=%H%x1f%h%x1f%s%x1f%b%x1e')
   const commits: Commit[] = []
 
@@ -252,9 +256,9 @@ const collectCommits = (since: string | null): Commit[] => {
   return commits
 }
 
-const formatCommit = (commit: Commit, url: string | null): string => {
+const formatCommit = (commit: Commit, url: string | null, message = commit.message): string => {
   const link = url === null ? commit.short : `[${commit.short}](${url}/commit/${commit.full})`
-  return `${commit.message} (${link})`
+  return `${message} (${link})`
 }
 
 interface Entry {
@@ -263,9 +267,8 @@ interface Entry {
 }
 
 /**
- * Groups entries under their scope so related changes read together, and keeps unscoped ones as plain items.
- *
- * Scopes appear in the order they were first used, which keeps the newest work first like the log itself.
+ * Related changes stay adjacent so readers can scan one area at a time.
+ * Scope order follows first occurrence to keep the newest work first.
  */
 const renderEntries = (entries: Entry[]): string[] => {
   const groups = new Map<string, string[]>()
@@ -276,15 +279,16 @@ const renderEntries = (entries: Entry[]): string[] => {
       plain.push(`- ${entry.text}`)
       continue
     }
+    const text = `- **${entry.scope}:** ${entry.text}`
     const group = groups.get(entry.scope)
     if (group) {
-      group.push(`  - ${entry.text}`)
+      group.push(text)
     } else {
-      groups.set(entry.scope, [`  - ${entry.text}`])
+      groups.set(entry.scope, [text])
     }
   }
 
-  return [...[...groups].flatMap(([scope, items]) => [`- ${scope}`, ...items]), ...plain]
+  return [...[...groups.values()].flat(), ...plain]
 }
 
 const formatDay = (day: Date): string => {
@@ -297,9 +301,13 @@ const formatDay = (day: Date): string => {
 const buildSection = (version: string, commits: Commit[], url: string | null, day: Date): string => {
   const lines = [`## v${version} (${formatDay(day)})`]
 
-  const breaking = commits.flatMap((commit) => commit.breaking.map((text) => ({ scope: commit.scope, text })))
+  const breaking = commits.flatMap((commit) => {
+    return commit.breaking.map((text) => {
+      return { scope: commit.scope, text: formatCommit(commit, url, text) }
+    })
+  })
   if (breaking.length > 0) {
-    lines.push('', '### Breaking', '')
+    lines.push('', '### Breaking Changes', '')
     lines.push(...renderEntries(breaking))
   }
 
@@ -317,6 +325,39 @@ const buildSection = (version: string, commits: Commit[], url: string | null, da
   }
 
   return `${lines.join('\n')}\n`
+}
+
+/**
+ * Tags bound each release so rebuilding never pulls later work into published notes.
+ */
+const rebuildChangelog = (existing: string | null, url: string | null): string => {
+  if (existing === null) {
+    return fail(`${CHANGE_LOG_FILE} does not exist`)
+  }
+  const headings = existing.split(/\r?\n/).filter((line) => line.startsWith('## v'))
+  if (headings.length === 0) {
+    return fail(`${CHANGE_LOG_FILE} has no recorded releases`)
+  }
+
+  return headings
+    .map((heading) => {
+      const match = RELEASE_HEADING_PATTERN.exec(heading)
+      const version = match?.groups?.version
+      const date = match?.groups?.date
+      if (version === undefined || date === undefined) {
+        return fail(`cannot rebuild malformed release heading: ${JSON.stringify(heading)}`)
+      }
+      const day = new Date(`${date}T00:00:00`)
+      if (formatDay(day) !== date) {
+        return fail(`cannot rebuild release with invalid date: ${date}`)
+      }
+      const tag = `${TAG_PREFIX}${version}`
+      if (git('tag', '--list', tag).trim() !== tag) {
+        return fail(`cannot rebuild ${version}: tag ${tag} does not exist`)
+      }
+      return buildSection(version, collectCommits(previousTag(version), tag), url, day)
+    })
+    .join('\n')
 }
 
 const extractSection = (text: string, version: string): string | null => {
@@ -372,19 +413,28 @@ const main = () => {
       extract: { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
       'check-bump': { type: 'boolean', default: false },
+      rebuild: { type: 'boolean', default: false },
     },
   })
 
   const version = positionals[0]
-  if (version === undefined) {
-    return fail('usage: build-change-log <version> [--dry-run | --extract | --check-bump]')
+  if ([values['dry-run'], values.extract, values['check-bump'], values.rebuild].filter(Boolean).length > 1) {
+    return fail('--dry-run, --extract, --check-bump and --rebuild are mutually exclusive')
   }
-  if ([values['dry-run'], values.extract, values['check-bump']].filter(Boolean).length > 1) {
-    return fail('--dry-run, --extract and --check-bump are mutually exclusive')
+  const existing = readFile(CHANGE_LOG_FILE)
+  if (values.rebuild) {
+    if (positionals.length > 0) {
+      return fail('--rebuild regenerates recorded releases and does not take a version')
+    }
+    writeFile(CHANGE_LOG_FILE, rebuildChangelog(existing, repoUrl()))
+    console.log(`rebuilt ${CHANGE_LOG_FILE}`)
+    return
+  }
+  if (version === undefined) {
+    return fail('usage: build-change-log <version> [--dry-run | --extract | --check-bump] | --rebuild')
   }
   versionKey(version)
 
-  const existing = readFile(CHANGE_LOG_FILE)
   const recorded = existing === null ? null : extractSection(existing, version)
 
   if (values.extract) {
