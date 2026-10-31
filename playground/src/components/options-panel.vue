@@ -100,6 +100,22 @@
             </div>
             <div :class="$style.operation">
               <label :class="$style.check">
+                <input :id="id + '-filters'" v-model="options.transforms.filters.enabled" type="checkbox" />
+                <span>{{ t('settings.removeNonLyric') }}</span>
+              </label>
+              <div v-if="options.transforms.filters.enabled" :class="$style.fields">
+                <fieldset :class="$style.ruleSet">
+                  <legend>{{ t('settings.nonLyricCategories') }}</legend>
+                  <label v-for="category in nonLyricCategoryOptions" :key="category.value" :class="$style.check">
+                    <input v-model="options.transforms.filters.categories" type="checkbox" :value="category.value" />
+                    <span>{{ category.label }}</span>
+                  </label>
+                </fieldset>
+                <small :class="[$style.hint, $style.operationHint]">{{ t('settings.removeNonLyricHint') }}</small>
+              </div>
+            </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
                 <input :id="id + '-instrumental'" v-model="options.transforms.instrumental.enabled" type="checkbox" />
                 <span>{{ t('settings.insertInstrumental') }}</span>
               </label>
@@ -297,7 +313,7 @@ import type { PlaygroundOptions } from '../lib/options'
 
 import { computed, ref, watch } from 'vue'
 
-import { InsertSpacesRules } from '@gondola-lyrics/kit'
+import { InsertSpacesRules, NON_LYRIC_CATEGORIES } from '@gondola-lyrics/kit'
 
 import { useI18n } from '../composables/useI18n'
 import { createOptions, getOptionOverrides } from '../lib/options'
@@ -352,6 +368,21 @@ const spaceRuleOptions = computed(() => {
     [InsertSpacesRules.TRIM_INSIDE_SYMBOLS]: 'settings.spaceRuleTrimInsideSymbols',
   }
   return Object.entries(labels).map(([value, key]) => ({ value, label: t(key) }))
+})
+
+const nonLyricCategoryOptions = computed(() => {
+  const labels: Record<string, MessageKey> = {
+    copyright: 'settings.nonLyricCopyright',
+    adaptation: 'settings.nonLyricAdaptation',
+    disclaimer: 'settings.nonLyricDisclaimer',
+    organization: 'settings.nonLyricOrganization',
+    studio: 'settings.nonLyricStudio',
+  }
+  // The rules may introduce a category before the playground names it, so the raw id remains selectable.
+  return NON_LYRIC_CATEGORIES.map((value) => {
+    const key = labels[value]
+    return { value, label: key === undefined ? value : t(key) }
+  })
 })
 
 const available = computed(() => {

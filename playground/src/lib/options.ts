@@ -7,11 +7,12 @@ import type {
   InsertSpacesRule,
   LrcGenerateOptions,
   LrcParseOptions,
+  RemoveNonLyricLinesOptions,
   TtmlGenerateOptions,
   TtmlParseOptions,
 } from '@gondola-lyrics/kit'
 
-import { DEFAULT_CREDIT_NAME_SEPARATORS, InsertSpacesRules } from '@gondola-lyrics/kit'
+import { DEFAULT_CREDIT_NAME_SEPARATORS, InsertSpacesRules, NON_LYRIC_CATEGORIES } from '@gondola-lyrics/kit'
 
 const ALL_SPACE_RULES = Object.values(InsertSpacesRules) as InsertSpacesRule[]
 
@@ -22,6 +23,7 @@ export interface PlaygroundOptions {
   }
   transforms: {
     credits: Required<ExtractCreditsOptions> & { enabled: boolean }
+    filters: Required<Omit<RemoveNonLyricLinesOptions, 'categories'>> & { enabled: boolean; categories: string[] }
     instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
     extract: Required<ExtractBackgroundLinesOptions> & { enabled: boolean }
@@ -51,6 +53,7 @@ export const createOptions = (): PlaygroundOptions => {
     },
     transforms: {
       credits: { enabled: false, removeSourceLines: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
+      filters: { enabled: false, categories: [...NON_LYRIC_CATEGORIES] },
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
       emphasis: { enabled: false, durationThreshold: 3000 },
       extract: { enabled: false, fullLine: true, inLine: true, crossLine: true },
@@ -112,6 +115,24 @@ const readRules = (value: unknown): InsertSpacesRule[] => {
 }
 
 /**
+ * Reports whether a category list already covers every category, in which case there is nothing to persist.
+ */
+const isDefaultCategories = (categories: string[]) => categories.length === NON_LYRIC_CATEGORIES.length
+
+/**
+ * Keeps the saved categories that are still known, falling back to every category when none survive.
+ */
+const readCategories = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [...NON_LYRIC_CATEGORIES]
+  }
+  const kept = value.filter((item): item is string => {
+    return typeof item === 'string' && NON_LYRIC_CATEGORIES.includes(item)
+  })
+  return kept.length ? kept : [...NON_LYRIC_CATEGORIES]
+}
+
+/**
  * Whitespace is significant in literal separators, so only empty or multiline strings are discarded.
  */
 const readNameSeparators = (value: unknown, fallback: readonly string[]): string[] => {
@@ -141,6 +162,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const lrcParse = readObject(parse.lrc)
   const ttmlParse = readObject(parse.ttml)
   const credits = readObject(transforms.credits)
+  const filters = readObject(transforms.filters)
   const instrumental = readObject(transforms.instrumental)
   const emphasis = readObject(transforms.emphasis)
   const extract = readObject(transforms.extract)
@@ -164,6 +186,10 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
         enabled: readBoolean(credits.enabled, defaults.transforms.credits.enabled),
         removeSourceLines: readBoolean(credits.removeSourceLines, defaults.transforms.credits.removeSourceLines),
         nameSeparators: readNameSeparators(credits.nameSeparators, defaults.transforms.credits.nameSeparators),
+      },
+      filters: {
+        enabled: readBoolean(filters.enabled, defaults.transforms.filters.enabled),
+        categories: readCategories(filters.categories),
       },
       instrumental: {
         enabled: readBoolean(instrumental.enabled, defaults.transforms.instrumental.enabled),
@@ -236,6 +262,10 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const isDefaultSeparators =
     separators.length === defaultSeparators.length && separators.every((separator, index) => separator === defaultSeparators[index])
   const creditSeparators = isDefaultSeparators ? undefined : { nameSeparators: separators }
+  const filters = pickOverrides({ ...options.transforms.filters, categories: undefined }, { ...defaults.transforms.filters, categories: undefined })
+  const filterCategories = isDefaultCategories(options.transforms.filters.categories)
+    ? undefined
+    : { categories: options.transforms.filters.categories }
   const instrumental = pickOverrides(options.transforms.instrumental, defaults.transforms.instrumental)
   const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
   const extract = pickOverrides(options.transforms.extract, defaults.transforms.extract)
@@ -252,9 +282,10 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }
-  if (credits || creditSeparators || instrumental || emphasis || extract || brackets || spaces || spaceRules) {
+  if (credits || creditSeparators || filters || filterCategories || instrumental || emphasis || extract || brackets || spaces || spaceRules) {
     overrides.transforms = {
       ...(credits || creditSeparators ? { credits: { ...credits, ...creditSeparators } } : {}),
+      ...(filters || filterCategories ? { filters: { ...filters, ...filterCategories } } : {}),
       ...(instrumental ? { instrumental } : {}),
       ...(emphasis ? { emphasis } : {}),
       ...(extract ? { extract } : {}),

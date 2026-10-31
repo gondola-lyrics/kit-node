@@ -13,6 +13,7 @@ import {
   parse,
   parseLrc,
   parseTtml,
+  removeNonLyricLines,
   stripBackgroundBrackets,
 } from '@gondola-lyrics/kit'
 
@@ -154,9 +155,12 @@ export const useParser = () => {
       }
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
-      const { credits, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
+      const { credits, filters, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
       if (credits.enabled) {
         lyric = extractCredits(lyric, credits)
+      }
+      if (filters.enabled) {
+        lyric = removeNonLyricLines(lyric, filters)
       }
       if (extract.enabled) {
         lyric = extractBackgroundLines(lyric, extract)
