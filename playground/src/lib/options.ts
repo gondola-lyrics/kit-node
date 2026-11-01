@@ -24,7 +24,11 @@ export interface PlaygroundOptions {
   }
   transforms: {
     credits: Required<ExtractCreditsOptions> & { enabled: boolean }
-    filters: Required<Omit<RemoveNonLyricLinesOptions, 'categories'>> & { enabled: boolean; categories: string[] }
+    filters: {
+      enabled: boolean
+      categories: string[]
+      musicInfo: RemoveNonLyricLinesOptions['musicInfo']
+    }
     agents: Required<Omit<ExtractAgentsOptions, 'bindings'>> & { enabled: boolean; bindings: ExtractAgentsOptions['bindings'] }
     instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
@@ -55,7 +59,7 @@ export const createOptions = (): PlaygroundOptions => {
     },
     transforms: {
       credits: { enabled: false, removeSourceLines: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
-      filters: { enabled: false, categories: [...NON_LYRIC_CATEGORIES] },
+      filters: { enabled: false, categories: [...NON_LYRIC_CATEGORIES], musicInfo: undefined },
       agents: { enabled: false, removePrefixes: true, bindings: undefined },
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
       emphasis: { enabled: false, durationThreshold: 3000 },
@@ -133,6 +137,13 @@ const readCategories = (value: unknown): string[] => {
     return typeof item === 'string' && NON_LYRIC_CATEGORIES.includes(item)
   })
   return kept.length ? kept : [...NON_LYRIC_CATEGORIES]
+}
+
+const readMusicInfo = (value: unknown): RemoveNonLyricLinesOptions['musicInfo'] => {
+  const info = readObject(value)
+  const titles = Array.isArray(info.titles) ? info.titles.filter((title): title is string => typeof title === 'string') : undefined
+  const artists = Array.isArray(info.artists) ? info.artists.filter((artist): artist is string => typeof artist === 'string') : undefined
+  return titles === undefined && artists === undefined ? undefined : { titles, artists }
 }
 
 /**
@@ -215,6 +226,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       filters: {
         enabled: readBoolean(filters.enabled, defaults.transforms.filters.enabled),
         categories: readCategories(filters.categories),
+        musicInfo: readMusicInfo(filters.musicInfo),
       },
       agents: {
         enabled: readBoolean(agents.enabled, defaults.transforms.agents.enabled),

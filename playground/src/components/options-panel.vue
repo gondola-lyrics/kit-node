@@ -104,6 +104,30 @@
                 <span>{{ t('settings.removeNonLyric') }}</span>
               </label>
               <div v-if="options.transforms.filters.enabled" :class="$style.fields">
+                <small :class="$style.hint">{{ t('settings.musicInfoFormatHint') }}</small>
+                <div :class="$style.field">
+                  <label :for="id + '-music-titles'">{{ t('settings.musicTitles') }}</label>
+                  <textarea
+                    :id="id + '-music-titles'"
+                    :value="musicTitlesText"
+                    :class="$style.separators"
+                    :aria-describedby="id + '-music-info-hint'"
+                    spellcheck="false"
+                    @input="updateMusicInfo('titles', $event)"
+                  />
+                </div>
+                <div :class="$style.field">
+                  <label :for="id + '-music-artists'">{{ t('settings.musicArtists') }}</label>
+                  <textarea
+                    :id="id + '-music-artists'"
+                    :value="musicArtistsText"
+                    :class="$style.separators"
+                    :aria-describedby="id + '-music-info-hint'"
+                    spellcheck="false"
+                    @input="updateMusicInfo('artists', $event)"
+                  />
+                  <small :id="id + '-music-info-hint'">{{ t('settings.musicInfoHint') }}</small>
+                </div>
                 <fieldset :class="$style.ruleSet">
                   <legend>{{ t('settings.nonLyricCategories') }}</legend>
                   <label v-for="category in nonLyricCategoryOptions" :key="category.value" :class="$style.check">
@@ -367,6 +391,45 @@ const opened = ref(false)
 const defaults = createOptions()
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
 const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
+const musicTitlesText = ref(options.value.transforms.filters.musicInfo?.titles?.join('\n') ?? '')
+const musicArtistsText = ref(options.value.transforms.filters.musicInfo?.artists?.join('\n') ?? '')
+
+const readMusicNames = (value: string): string[] => {
+  return value
+    .split(/\r\n?|\n/)
+    .map((name) => name.trim())
+    .filter((name) => name !== '')
+}
+
+const updateMusicInfo = (key: 'titles' | 'artists', event: Event) => {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return
+  }
+  const draft = key === 'titles' ? musicTitlesText : musicArtistsText
+  draft.value = target.value
+  const names = readMusicNames(target.value)
+  const musicInfo = { ...options.value.transforms.filters.musicInfo, [key]: names.length === 0 ? undefined : names }
+  options.value.transforms.filters.musicInfo = musicInfo.titles === undefined && musicInfo.artists === undefined ? undefined : musicInfo
+}
+
+watch(
+  () => options.value.transforms.filters.musicInfo,
+  (musicInfo) => {
+    for (const [key, draft] of [
+      ['titles', musicTitlesText],
+      ['artists', musicArtistsText],
+    ] as const) {
+      const names = musicInfo?.[key] ?? []
+      const parsed = readMusicNames(draft.value)
+      if (parsed.length !== names.length || parsed.some((name, index) => name !== names[index])) {
+        draft.value = names.join('\n')
+      }
+    }
+  },
+  { deep: true },
+)
+
 const formatAgentBindings = (bindings: PlaygroundOptions['transforms']['agents']['bindings']): string => {
   return JSON.stringify(bindings ?? {}, null, 2)
 }

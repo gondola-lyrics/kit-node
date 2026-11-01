@@ -25,6 +25,11 @@ const EN = {
   'settings.removeNonLyric': 'Remove non-lyric lines',
   'settings.removeNonLyricHint':
     'Removes lines the shared rules identify as notices or labels, together with their annotations and background vocals.',
+  'settings.musicInfoFormatHint':
+    'Checks only the first non-empty lyric line. It must use " - ", with a known title on one side and a known artist on the other; bracketed aliases are included.',
+  'settings.musicTitles': 'Known song titles',
+  'settings.musicArtists': 'Known artists',
+  'settings.musicInfoHint': 'Enter one name per line. Provide both titles and artists to check the first line; leaving either field empty skips it.',
   'settings.nonLyricCategories': 'Categories',
   'settings.nonLyricCopyright': 'Copyright notice',
   'settings.nonLyricAdaptation': 'Adaptation label',
@@ -172,6 +177,10 @@ const ZH: Record<MessageKey, string> = {
   'settings.creditNameSeparatorsHint': '每行填写一个分隔符，空格按原样保留；留空不拆分姓名。',
   'settings.removeNonLyric': '移除非正文行',
   'settings.removeNonLyricHint': '移除共享规则识别为声明或标签的行，连同其注释与背景人声。',
+  'settings.musicInfoFormatHint': '仅检查第一条非空歌词；必须使用「 - 」，两侧分别包含已知歌名和歌手，括号别名随整行移除。',
+  'settings.musicTitles': '已知歌名',
+  'settings.musicArtists': '已知歌手',
+  'settings.musicInfoHint': '每行填写一个名称；歌名、歌手都填写时才检查首行，任一项留空则跳过。',
   'settings.nonLyricCategories': '类别',
   'settings.nonLyricCopyright': '版权声明',
   'settings.nonLyricAdaptation': '翻唱 / 改编标记',

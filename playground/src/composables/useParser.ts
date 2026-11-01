@@ -157,11 +157,15 @@ export const useParser = () => {
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
       const { credits, filters, agents, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
+      // Fix the music-information candidate before credit removal can expose another first line.
+      if (filters.enabled && filters.musicInfo !== undefined) {
+        lyric = removeNonLyricLines(lyric, { ...filters, categories: [] })
+      }
       if (credits.enabled) {
         lyric = extractCredits(lyric, credits)
       }
       if (filters.enabled) {
-        lyric = removeNonLyricLines(lyric, filters)
+        lyric = removeNonLyricLines(lyric, { ...filters, musicInfo: undefined })
       }
       if (agents.enabled) {
         lyric = extractAgents(lyric, agents)
