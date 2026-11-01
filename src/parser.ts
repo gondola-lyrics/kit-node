@@ -4,6 +4,7 @@ export { detectFormat, parse, parseLrc, parseTtml } from './formats'
 
 export type {
   DeriveWordEmphasisOptions,
+  ExtractAgentsOptions,
   ExtractBackgroundLinesOptions,
   ExtractCreditsOptions,
   InsertInstrumentalLinesOptions,
@@ -17,6 +18,7 @@ export {
   InsertSpacesRules,
   NON_LYRIC_CATEGORIES,
   deriveWordEmphasis,
+  extractAgents,
   extractBackgroundLines,
   extractCredits,
   removeNonLyricLines,
