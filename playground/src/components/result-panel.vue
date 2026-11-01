@@ -11,81 +11,87 @@
     <div v-else-if="invalid" :class="$style.notice" role="alert">
       <strong>{{ t('result.invalid') }}</strong>
     </div>
-    <div v-else-if="result" :class="$style.card">
-      <div :class="$style.summary">
-        <div :class="$style.primary">
-          <span>{{ timingSummary }}</span>
-          <span v-if="result.diagnostics.length === 0" :class="$style.validation">{{ t('validation.pass') }}</span>
+    <div :class="$style.card">
+      <template v-if="result && !error && !invalid">
+        <div :class="$style.summary">
+          <div :class="$style.primary">
+            <span>{{ timingSummary }}</span>
+            <span v-if="result.diagnostics.length === 0" :class="$style.validation">{{ t('validation.pass') }}</span>
+          </div>
+          <div :class="$style.secondary">
+            <span :title="t('result.elapsed')">{{ result.elapsed.toFixed(2) }} ms</span>
+            <span :title="t('result.size')"
+              >{{ formatBytes(result.inputBytes) }} → {{ result.encodedBytes === null ? '—' : formatBytes(result.encodedBytes) }}</span
+            >
+            <span :class="$style.version">v{{ result.lyric.version }}</span>
+          </div>
         </div>
-        <div :class="$style.secondary">
-          <span :title="t('result.elapsed')">{{ result.elapsed.toFixed(2) }} ms</span>
-          <span :title="t('result.size')"
-            >{{ formatBytes(result.inputBytes) }} → {{ result.encodedBytes === null ? '—' : formatBytes(result.encodedBytes) }}</span
-          >
-          <span :class="$style.version">v{{ result.lyric.version }}</span>
+        <details v-if="result.diagnostics.length" :class="$style.diagnostics">
+          <summary>
+            <span
+              >{{ t('validation.title') }} <span :class="$style.count">{{ result.diagnostics.length }}</span></span
+            >
+            <svg :class="$style.chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </summary>
+          <div :class="$style.table" tabindex="0" role="region" :aria-label="t('validation.title')">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">{{ t('validation.path') }}</th>
+                  <th scope="col">{{ t('validation.code') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in result.diagnostics" :key="index">
+                  <td :data-label="t('validation.path')">{{ item.path || '$' }}</td>
+                  <td :data-label="t('validation.code')">{{ item.code }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <div v-if="result.encodingError" :class="$style.notice" role="status">
+          <strong>{{ t('result.encodingFailed') }}</strong>
+          <p>{{ result.encodingError }}</p>
         </div>
-      </div>
-      <details v-if="result.diagnostics.length" :class="$style.diagnostics">
-        <summary>
-          <span
-            >{{ t('validation.title') }} <span :class="$style.count">{{ result.diagnostics.length }}</span></span
-          >
-          <svg :class="$style.chevron" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </summary>
-        <div :class="$style.table" tabindex="0" role="region" :aria-label="t('validation.title')">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">{{ t('validation.path') }}</th>
-                <th scope="col">{{ t('validation.code') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, index) in result.diagnostics" :key="index">
-                <td :data-label="t('validation.path')">{{ item.path || '$' }}</td>
-                <td :data-label="t('validation.code')">{{ item.code }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </details>
-      <div v-if="result.encodingError" :class="$style.notice" role="status">
-        <strong>{{ t('result.encodingFailed') }}</strong>
-        <p>{{ result.encodingError }}</p>
-      </div>
+      </template>
 
       <OptionsPanel id="result-options" v-model="options" scope="result" :format="format">
-        <ControlTabs v-model="view" :items="views" :label="t('result.views')" />
+        <ControlTabs v-if="result && !error && !invalid" v-model="view" :items="views" :label="t('result.views')" />
       </OptionsPanel>
 
-      <div v-if="view === 'preview'" id="result-preview" :class="$style.preview" role="tabpanel" aria-labelledby="preview-switch">
-        <LyricPreview :lyric="result.lyric" />
-      </div>
-      <div v-else :id="'panel-' + view" role="tabpanel" :aria-labelledby="view + '-switch'">
-        <div v-if="output.error" :class="$style.notice" role="alert">
-          <strong>{{ t(view === 'ttml' ? 'result.ttmlGenerationFailed' : 'result.generationFailed') }}</strong>
-          <p>{{ output.error }}</p>
+      <template v-if="result && !error && !invalid">
+        <div v-if="view === 'preview'" id="result-preview" :class="$style.preview" role="tabpanel" aria-labelledby="preview-switch">
+          <LyricPreview :lyric="result.lyric" />
         </div>
-        <div v-else :class="$style.codeView">
-          <div :class="$style.toolbar">
-            <button type="button" :class="$style.copy" :disabled="!output.text" @click="copy">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" />
-                <path d="M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" />
-              </svg>
-              {{ t(copied ? 'result.copied' : 'result.copy') }}
-            </button>
+        <div v-else :id="'panel-' + view" role="tabpanel" :aria-labelledby="view + '-switch'">
+          <div v-if="output.error" :class="$style.notice" role="alert">
+            <strong>{{ t(view === 'ttml' ? 'result.ttmlGenerationFailed' : 'result.generationFailed') }}</strong>
+            <p>{{ output.error }}</p>
           </div>
-          <p v-if="copyFailed" :class="$style.copyError" role="status">{{ t('result.copyFailed') }}</p>
-          <pre :id="'result-' + view" :class="$style.code" tabindex="0" :aria-label="view.toUpperCase()" @keydown="selectAll">{{ output.text }}</pre>
+          <div v-else :class="$style.codeView">
+            <div :class="$style.toolbar">
+              <button type="button" :class="$style.copy" :disabled="!output.text" @click="copy">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" />
+                  <path d="M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" stroke="currentColor" />
+                </svg>
+                {{ t(copied ? 'result.copied' : 'result.copy') }}
+              </button>
+            </div>
+            <p v-if="copyFailed" :class="$style.copyError" role="status">{{ t('result.copyFailed') }}</p>
+            <pre :id="'result-' + view" :class="$style.code" tabindex="0" :aria-label="view.toUpperCase()" @keydown="selectAll">{{
+              output.text
+            }}</pre>
+          </div>
         </div>
+      </template>
+      <div v-else-if="!error && !invalid" :class="$style.empty">
+        <p>{{ t('result.empty') }}</p>
+        <span>{{ t('result.emptyHint') }}</span>
       </div>
-    </div>
-    <div v-else :class="$style.empty">
-      <p>{{ t('result.empty') }}</p>
-      <span>{{ t('result.emptyHint') }}</span>
     </div>
   </section>
 </template>

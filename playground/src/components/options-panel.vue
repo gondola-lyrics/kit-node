@@ -116,6 +116,46 @@
             </div>
             <div :class="$style.operation">
               <label :class="$style.check">
+                <input :id="id + '-agents'" v-model="options.transforms.agents.enabled" type="checkbox" />
+                <span>{{ t('settings.extractAgents') }}</span>
+              </label>
+              <div v-if="options.transforms.agents.enabled" :class="$style.fields">
+                <label :class="$style.check">
+                  <input :id="id + '-agent-prefixes'" v-model="options.transforms.agents.removePrefixes" type="checkbox" />
+                  <span>{{ t('settings.removeAgentPrefixes') }}</span>
+                </label>
+                <div :class="$style.field">
+                  <label :for="id + '-agent-mode'">{{ t('settings.agentMatchMode') }}</label>
+                  <select :id="id + '-agent-mode'" v-model="agentMatchMode" :aria-describedby="id + '-agent-mode-hint'">
+                    <option value="legacy">{{ t('settings.agentLegacyMode') }}</option>
+                    <option value="bindings">{{ t('settings.agentBindingsMode') }}</option>
+                  </select>
+                  <small :id="id + '-agent-mode-hint'">{{
+                    t(agentMatchMode === 'legacy' ? 'settings.agentLegacyHint' : 'settings.agentBindingsModeHint')
+                  }}</small>
+                </div>
+                <div v-if="agentMatchMode === 'bindings'" :class="$style.field">
+                  <label :for="id + '-agent-bindings'">{{ t('settings.agentBindings') }}</label>
+                  <textarea
+                    :id="id + '-agent-bindings'"
+                    v-model="agentBindingsText"
+                    rows="5"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    :aria-invalid="agentBindingsError ? true : undefined"
+                    :aria-describedby="id + '-agent-bindings-hint' + (agentBindingsError ? ' ' + id + '-agent-bindings-error' : '')"
+                    @input="updateAgentBindings"
+                  ></textarea>
+                  <small :id="id + '-agent-bindings-hint'">{{ t('settings.agentBindingsHint') }}</small>
+                  <small v-if="agentBindingsError" :id="id + '-agent-bindings-error'" :class="$style.bindingError" role="alert">{{
+                    t(agentBindingsError)
+                  }}</small>
+                </div>
+              </div>
+            </div>
+            <div :class="$style.operation">
+              <label :class="$style.check">
                 <input :id="id + '-instrumental'" v-model="options.transforms.instrumental.enabled" type="checkbox" />
                 <span>{{ t('settings.insertInstrumental') }}</span>
               </label>
@@ -316,7 +356,7 @@ import { computed, ref, watch } from 'vue'
 import { InsertSpacesRules, NON_LYRIC_CATEGORIES } from '@gondola-lyrics/kit'
 
 import { useI18n } from '../composables/useI18n'
-import { createOptions, getOptionOverrides } from '../lib/options'
+import { createOptions, getOptionOverrides, readAgentBindings } from '../lib/options'
 
 import NumberField from './number-field.vue'
 
@@ -327,6 +367,65 @@ const opened = ref(false)
 const defaults = createOptions()
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
 const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
+const formatAgentBindings = (bindings: PlaygroundOptions['transforms']['agents']['bindings']): string => {
+  return JSON.stringify(bindings ?? {}, null, 2)
+}
+let appliedAgentBindings = options.value.transforms.agents.bindings
+let appliedAgentOptions = options.value.transforms.agents
+let savedAgentBindings = readAgentBindings(appliedAgentBindings)
+const agentBindingsText = ref(formatAgentBindings(appliedAgentBindings))
+const agentBindingsError = ref<MessageKey | ''>('')
+const agentMatchMode = computed({
+  get: () => {
+    return options.value.transforms.agents.bindings === undefined ? 'legacy' : 'bindings'
+  },
+  set: (mode: 'legacy' | 'bindings') => {
+    if (mode === 'legacy' && options.value.transforms.agents.bindings !== undefined) {
+      savedAgentBindings = readAgentBindings(options.value.transforms.agents.bindings)
+    }
+    options.value.transforms.agents.bindings = mode === 'bindings' ? (readAgentBindings(savedAgentBindings) ?? {}) : undefined
+    appliedAgentBindings = options.value.transforms.agents.bindings
+    agentBindingsText.value = formatAgentBindings(appliedAgentBindings)
+    agentBindingsError.value = ''
+  },
+})
+const updateAgentBindings = (event: Event) => {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return
+  }
+  agentBindingsText.value = target.value
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(target.value)
+  } catch {
+    agentBindingsError.value = 'settings.agentBindingsInvalidJson'
+    return
+  }
+  const bindings = readAgentBindings(parsed)
+  if (bindings === undefined) {
+    agentBindingsError.value = 'settings.agentBindingsInvalidShape'
+    return
+  }
+  agentBindingsError.value = ''
+  options.value.transforms.agents.bindings = bindings
+  appliedAgentBindings = options.value.transforms.agents.bindings
+  savedAgentBindings = readAgentBindings(bindings)
+}
+
+watch(
+  () => [options.value.transforms.agents, options.value.transforms.agents.bindings] as const,
+  ([agents, bindings]) => {
+    // An accepted edit keeps its spelling and caret until another control replaces the bindings.
+    if (agents !== appliedAgentOptions || bindings !== appliedAgentBindings) {
+      agentBindingsText.value = formatAgentBindings(bindings)
+      agentBindingsError.value = ''
+      appliedAgentBindings = bindings
+      appliedAgentOptions = agents
+      savedAgentBindings = readAgentBindings(bindings)
+    }
+  },
+)
 
 const readCreditSeparators = (value: string): string[] => {
   return [...new Set(value.split(/\r\n?|\n/).filter((separator) => separator !== ''))]
@@ -750,7 +849,8 @@ const resetGeneration = () => {
     line-height: 1.6;
   }
 
-  :global(input[aria-invalid='true']) {
+  :global(input[aria-invalid='true']),
+  :global(textarea[aria-invalid='true']) {
     border-color: #bd6675;
   }
 
@@ -759,6 +859,10 @@ const resetGeneration = () => {
     font-size: 11px;
     line-height: 1.6;
     overflow-wrap: anywhere;
+  }
+
+  .bindingError {
+    color: #a53b4d;
   }
 
   .error {

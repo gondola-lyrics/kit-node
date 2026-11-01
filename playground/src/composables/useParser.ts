@@ -6,6 +6,7 @@ import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
 import {
   deriveWordEmphasis,
+  extractAgents,
   extractBackgroundLines,
   extractCredits,
   insertInstrumentalLines,
@@ -155,12 +156,15 @@ export const useParser = () => {
       }
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
-      const { credits, filters, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
+      const { credits, filters, agents, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
       if (credits.enabled) {
         lyric = extractCredits(lyric, credits)
       }
       if (filters.enabled) {
         lyric = removeNonLyricLines(lyric, filters)
+      }
+      if (agents.enabled) {
+        lyric = extractAgents(lyric, agents)
       }
       if (extract.enabled) {
         lyric = extractBackgroundLines(lyric, extract)

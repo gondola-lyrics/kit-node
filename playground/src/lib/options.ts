@@ -1,5 +1,6 @@
 import type {
   DeriveWordEmphasisOptions,
+  ExtractAgentsOptions,
   ExtractBackgroundLinesOptions,
   ExtractCreditsOptions,
   InsertInstrumentalLinesOptions,
@@ -24,6 +25,7 @@ export interface PlaygroundOptions {
   transforms: {
     credits: Required<ExtractCreditsOptions> & { enabled: boolean }
     filters: Required<Omit<RemoveNonLyricLinesOptions, 'categories'>> & { enabled: boolean; categories: string[] }
+    agents: Required<Omit<ExtractAgentsOptions, 'bindings'>> & { enabled: boolean; bindings: ExtractAgentsOptions['bindings'] }
     instrumental: Required<Omit<InsertInstrumentalLinesOptions, 'endTime'>> & Pick<InsertInstrumentalLinesOptions, 'endTime'> & { enabled: boolean }
     emphasis: Required<DeriveWordEmphasisOptions> & { enabled: boolean }
     extract: Required<ExtractBackgroundLinesOptions> & { enabled: boolean }
@@ -54,6 +56,7 @@ export const createOptions = (): PlaygroundOptions => {
     transforms: {
       credits: { enabled: false, removeSourceLines: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
       filters: { enabled: false, categories: [...NON_LYRIC_CATEGORIES] },
+      agents: { enabled: false, removePrefixes: true, bindings: undefined },
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
       emphasis: { enabled: false, durationThreshold: 3000 },
       extract: { enabled: false, fullLine: true, inLine: true, crossLine: true },
@@ -150,6 +153,27 @@ const readNameSeparators = (value: unknown, fallback: readonly string[]): string
 }
 
 /**
+ * Copies JSON bindings for parse snapshots while leaving identity validation to the kit.
+ */
+export const readAgentBindings = (value: unknown): ExtractAgentsOptions['bindings'] => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const entries = Object.entries(value)
+  const valid = entries.every(([, target]) => {
+    return typeof target === 'string' || (Array.isArray(target) && target.every((id) => typeof id === 'string'))
+  })
+  if (!valid) {
+    return undefined
+  }
+  return Object.fromEntries(
+    entries.map(([label, target]) => {
+      return [label, Array.isArray(target) ? [...target] : target]
+    }),
+  )
+}
+
+/**
  * Restore older or partial saved settings and isolate in-flight work from subsequent edits.
  * Empty or invalid numeric inputs use their defaults; an unknown outro end stays unset.
  */
@@ -163,6 +187,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const ttmlParse = readObject(parse.ttml)
   const credits = readObject(transforms.credits)
   const filters = readObject(transforms.filters)
+  const agents = readObject(transforms.agents)
   const instrumental = readObject(transforms.instrumental)
   const emphasis = readObject(transforms.emphasis)
   const extract = readObject(transforms.extract)
@@ -190,6 +215,11 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       filters: {
         enabled: readBoolean(filters.enabled, defaults.transforms.filters.enabled),
         categories: readCategories(filters.categories),
+      },
+      agents: {
+        enabled: readBoolean(agents.enabled, defaults.transforms.agents.enabled),
+        removePrefixes: readBoolean(agents.removePrefixes, defaults.transforms.agents.removePrefixes),
+        bindings: agents.bindings === undefined ? undefined : (readAgentBindings(agents.bindings) ?? {}),
       },
       instrumental: {
         enabled: readBoolean(instrumental.enabled, defaults.transforms.instrumental.enabled),
@@ -266,6 +296,7 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const filterCategories = isDefaultCategories(options.transforms.filters.categories)
     ? undefined
     : { categories: options.transforms.filters.categories }
+  const agents = pickOverrides(options.transforms.agents, defaults.transforms.agents)
   const instrumental = pickOverrides(options.transforms.instrumental, defaults.transforms.instrumental)
   const emphasis = pickOverrides(options.transforms.emphasis, defaults.transforms.emphasis)
   const extract = pickOverrides(options.transforms.extract, defaults.transforms.extract)
@@ -275,6 +306,16 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const lrcGenerate = pickOverrides(options.generate.lrc, defaults.generate.lrc)
   const ttmlGenerate = pickOverrides(options.generate.ttml, defaults.generate.ttml)
   const overrides: OptionOverrides = {}
+  const transformOverrides = {
+    ...(credits || creditSeparators ? { credits: { ...credits, ...creditSeparators } } : {}),
+    ...(filters || filterCategories ? { filters: { ...filters, ...filterCategories } } : {}),
+    ...(agents ? { agents } : {}),
+    ...(instrumental ? { instrumental } : {}),
+    ...(emphasis ? { emphasis } : {}),
+    ...(extract ? { extract } : {}),
+    ...(brackets ? { brackets } : {}),
+    ...(spaces || spaceRules ? { spaces: { ...spaces, ...spaceRules } } : {}),
+  }
 
   if (lrcParse || ttmlParse) {
     overrides.parse = {
@@ -282,16 +323,8 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }
-  if (credits || creditSeparators || filters || filterCategories || instrumental || emphasis || extract || brackets || spaces || spaceRules) {
-    overrides.transforms = {
-      ...(credits || creditSeparators ? { credits: { ...credits, ...creditSeparators } } : {}),
-      ...(filters || filterCategories ? { filters: { ...filters, ...filterCategories } } : {}),
-      ...(instrumental ? { instrumental } : {}),
-      ...(emphasis ? { emphasis } : {}),
-      ...(extract ? { extract } : {}),
-      ...(brackets ? { brackets } : {}),
-      ...(spaces || spaceRules ? { spaces: { ...spaces, ...spaceRules } } : {}),
-    }
+  if (Object.keys(transformOverrides).length > 0) {
+    overrides.transforms = transformOverrides
   }
   if (lrcGenerate || ttmlGenerate) {
     overrides.generate = {
