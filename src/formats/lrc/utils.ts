@@ -50,8 +50,7 @@ export interface WordPiece {
 }
 
 /**
- * Untagged leading text is preserved; tags without following text produce no piece.
- * A trailing tag still yields an empty piece so it can close the preceding word.
+ * Untagged leading text is preserved; empty timed pieces retain explicit segment boundaries.
  * Only recognized time tags split content; other angle-bracket text remains literal.
  */
 export const splitWordTags = (content: string) => {
@@ -67,7 +66,7 @@ export const splitWordTags = (content: string) => {
     const at = match.index
     const before = content.slice(cursor, at)
 
-    if (before) {
+    if (before || tag !== undefined) {
       pieces.push({ text: before, tag })
     }
 

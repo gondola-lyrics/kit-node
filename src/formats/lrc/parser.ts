@@ -5,7 +5,7 @@ import type { LrcMetaTag } from './reader'
 
 import { LyricStatus, Timing, deriveLanguageUsages, makeLyric, makeMeta, makeText, makeUnknownEntry } from '@gondola-lyrics/model/runtime'
 
-import { attachLineAnnotations, parseTime } from '@root/utils'
+import { attachAnnotations, parseTime } from '@root/utils'
 
 import { finalizeLyric } from '../result'
 import { readLrc } from './reader'
@@ -17,6 +17,13 @@ export interface LrcParseOptions {
    * Defaults to `0`, which requires an exact match.
    */
   annotationTolerance?: number
+  /**
+   * Maximum roman token drift outside a matched word, in milliseconds; matched boundaries are adjusted to that word.
+   * Original word timing is preserved, and incomplete word matches retain the source line romanization.
+   *
+   * @default 0
+   */
+  wordAnnotationTolerance?: number
 }
 
 export type LrcParseInput = LrcContent
@@ -100,6 +107,7 @@ const parseLrcText = (text: string): runtime.Lyric => {
  * Empty timed rows become instrumental lines; source order and missing word times remain for model validation.
  *
  * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
+ * Complete timed roman tracks attach to words; other roman tracks retain their source line text.
  *
  * `INVALID` means no readable timed lines; the returned diagnostics carry whatever the canonical tree breaks.
  */
@@ -117,7 +125,14 @@ export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions
     return finalizeLyric(lyric)
   }
 
-  const lines = attachLineAnnotations(lyric.lines, { translations, romans }, { tolerance: options.annotationTolerance })
+  const lines = attachAnnotations(
+    lyric.lines,
+    { translations, romans },
+    {
+      tolerance: options.annotationTolerance,
+      wordTolerance: options.wordAnnotationTolerance,
+    },
+  )
 
   return finalizeLyric({ ...lyric, lines })
 }

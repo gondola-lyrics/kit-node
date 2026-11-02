@@ -13,7 +13,7 @@ import {
   resolveAnnotationTokenTime,
 } from '@gondola-lyrics/model/runtime'
 
-import { createXmlElement, createXmlText, serializeXml } from '@root/utils'
+import { createXmlElement, createXmlText, getLineRomans, serializeXml } from '@root/utils'
 
 import { FORMAT } from './common'
 import {
@@ -256,12 +256,12 @@ const renderContent = (line: SungLine, context: RenderContext): XmlNode[] => {
 /**
  * Keeps annotations outside the sung word stream.
  */
-const renderInlineAnnotations = (annotation: runtime.LineAnnotation | undefined, language?: string): XmlElement[] => {
+const renderInlineAnnotations = (line: SungLine, language?: string): XmlElement[] => {
   const nodes: XmlElement[] = []
-  for (const item of annotation?.translations ?? []) {
+  for (const item of line.annotation?.translations ?? []) {
     nodes.push(createXmlElement('span', [['ttm:role', ROLE_TRANSLATION], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
-  for (const item of annotation?.romans ?? []) {
+  for (const item of getLineRomans(line)) {
     nodes.push(createXmlElement('span', [['ttm:role', ROLE_ROMAN], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
   return nodes
@@ -298,7 +298,7 @@ const createLyricElement = (name: string, attributes: Attributes, children: XmlN
 const renderBackground = (line: runtime.LineBackground, context: RenderContext) => {
   const children = renderContent(line, context)
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line.annotation, getLineLanguage(line)))
+    children.push(...renderInlineAnnotations(line, getLineLanguage(line)))
   }
 
   return createXmlElement('span', [['ttm:role', ROLE_BACKGROUND], ...renderLineAttributes(line, context)], children)
@@ -318,7 +318,7 @@ const renderLine = (line: runtime.Line, context: RenderContext) => {
 
   const children = [...before, ...renderContent(line, context), ...after]
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line.annotation, getLineLanguage(line)))
+    children.push(...renderInlineAnnotations(line, getLineLanguage(line)))
   }
   return createLyricElement('p', renderLineAttributes(line, context), children)
 }
@@ -416,11 +416,8 @@ const renderAnnotationTracks = (tracks: AnnotationTracks, kind: AnnotationKind, 
  */
 const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): XmlElement[] => {
   const tracks: Record<AnnotationKind, AnnotationTracks> = { translations: new Map(), romans: new Map() }
-  const append = (annotation: runtime.LineAnnotation | undefined, line: runtime.Line, background?: runtime.LineBackground) => {
-    if (annotation === undefined) {
-      return
-    }
-
+  const append = (source: SungLine, line: runtime.Line, background?: runtime.LineBackground) => {
+    const annotation = { translations: source.annotation?.translations ?? [], romans: getLineRomans(source) }
     for (const kind of ANNOTATION_KINDS) {
       for (const item of annotation[kind]) {
         const language = item.language?.toLowerCase()
@@ -452,9 +449,9 @@ const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): X
   }
 
   for (const line of lines) {
-    append(line.annotation, line)
+    append(line, line)
     for (const background of line.backgrounds) {
-      append(background.annotation, line, background)
+      append(background, line, background)
     }
   }
 
@@ -502,6 +499,7 @@ const renderRootAttributes = (lyric: runtime.Lyric, profile: TtmlProfile): Attri
  *
  * Offsets are baked into timestamps; a negative result or a missing required time throws.
  * Profile mappings retain the lead agent and first AMLL ruby, omitting unsupported fields and instrumental nodes.
+ * Word romanizations are emitted as line text without their token timing.
  */
 export const generateTtml = (lyric: runtime.Lyric, options: TtmlGenerateOptions = {}): TtmlGenerateResult => {
   if (lyric.timing !== Timing.LINE && lyric.timing !== Timing.WORD) {

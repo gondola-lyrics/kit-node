@@ -1,9 +1,9 @@
 import type { runtime } from '@gondola-lyrics/model'
 import type { LrcContent } from './common'
 
-import { LineType, WordType, getContentText } from '@gondola-lyrics/model/runtime'
+import { LineType, WordType, getAnnotationItemText, getContentText, resolveAnnotationTokenTime } from '@gondola-lyrics/model/runtime'
 
-import { formatTime } from '@root/utils'
+import { formatTime, getLineRomans, lowerTag } from '@root/utils'
 
 export type LrcGenerateResult = LrcContent
 
@@ -49,7 +49,6 @@ const renderWordTag = (start: number, end: number | undefined, options: LrcGener
 
   const open = options.wordTiming === 'bracket' ? '[' : '<'
   const close = options.wordTiming === 'bracket' ? ']' : '>'
-  // A duration of zero still states where the word stops, so it is written when the end is known.
   const duration = options.includeWordEnd && end !== undefined ? `,${Math.max(0, end - start)}` : ''
 
   return `${open}${formatTime(start, options.timeFormat)}${duration}${close}`
@@ -73,7 +72,49 @@ const renderSyllableText = (line: runtime.Line, options: LrcGenerateOptionsRequi
       if (start === undefined) {
         return word.text
       }
-      return `${renderWordTag(start, word.time?.end, options)}${word.text}`
+      const end = word.time?.end
+      // Zero duration is open in LRC, so a closing boundary preserves a known zero range.
+      const closing = options.wordTiming === 'angle' && options.includeWordEnd && end === start ? renderWordTag(end, undefined, options) : ''
+      return `${renderWordTag(start, end, options)}${word.text}${closing}`
+    })
+    .join('')
+}
+
+const renderWordRomans = (line: runtime.Line, language: string | undefined, options: LrcGenerateOptionsRequired): string => {
+  const pieces: { text: string; time: runtime.TimeRange | undefined }[] = []
+  let spaced = false
+  for (const word of line.content?.words ?? []) {
+    if (word.type === WordType.SPACE) {
+      spaced = true
+      continue
+    }
+    const roman = word.annotation?.romans.find((item) => lowerTag(item.language) === language)
+    if (roman === undefined || getAnnotationItemText(roman) === '') {
+      continue
+    }
+    let prefix = pieces.length > 0 && spaced ? ' ' : ''
+    spaced = false
+    for (const token of roman.tokens) {
+      if (token.text === '') {
+        continue
+      }
+      pieces.push({ text: prefix + token.text, time: resolveAnnotationTokenTime(token, roman, word) })
+      prefix = ''
+    }
+  }
+
+  return pieces
+    .map((piece, index) => {
+      const start = piece.time?.start
+      if (start === undefined) {
+        return piece.text
+      }
+      const end = piece.time?.end
+      const nextStart = pieces[index + 1]?.time?.start
+      const needsClosing = end !== undefined && end !== nextStart && (!options.includeWordEnd || end === start)
+      // Otherwise an open token could extend across words omitted from this romanization track.
+      const closing = needsClosing ? renderWordTag(end, undefined, options) : ''
+      return `${renderWordTag(start, end, options)}${piece.text}${closing}`
     })
     .join('')
 }
@@ -145,6 +186,23 @@ const renderAnnotationRows = (lines: runtime.Line[], options: LrcGenerateOptions
   return rows
 }
 
+const renderRomanRows = (lines: runtime.Line[], options: LrcGenerateOptionsRequired): string[] => {
+  const rows: string[] = []
+  for (const line of lines) {
+    const start = line.time?.start
+    if (start === undefined) {
+      continue
+    }
+    const explicit = new Set((line.annotation?.romans ?? []).map((item) => lowerTag(item.language)))
+    for (const item of getLineRomans(line)) {
+      const language = lowerTag(item.language)
+      const text = options.wordTiming === 'none' || explicit.has(language) ? item.text : renderWordRomans(line, language, options)
+      rows.push(`${renderTimeTag(start, options)}${text}`)
+    }
+  }
+  return rows
+}
+
 const joinBlocks = (header: string[], body: string[]) => {
   const blocks: string[] = []
   if (header.length) {
@@ -161,6 +219,7 @@ const joinBlocks = (header: string[], body: string[]) => {
  * Generates the LRC text plus the annotations a single file cannot hold.
  *
  * Word tags appear only for a word-timed lyric when `wordTiming` is not `none`; otherwise every line stays whole.
+ * Word romanizations retain token boundaries; explicit line romanizations take precedence for the same language.
  */
 export const generateLrc = (lyric: runtime.Lyric, options: LrcGenerateOptions = {}): LrcGenerateResult => {
   const resolved = resolveOptions(options)
@@ -184,7 +243,7 @@ export const generateLrc = (lyric: runtime.Lyric, options: LrcGenerateOptions = 
     result.translations = joinBlocks(header, translations)
   }
 
-  const romans = renderAnnotationRows(lyric.lines, resolved, (line) => line.annotation?.romans ?? [])
+  const romans = renderRomanRows(lyric.lines, resolved)
   if (romans.length) {
     result.romans = joinBlocks(header, romans)
   }

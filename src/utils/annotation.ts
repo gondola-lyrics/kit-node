@@ -1,8 +1,20 @@
 import type { runtime } from '@gondola-lyrics/model'
 
-import { LineType, getContentText, makeLineAnnotation, makeLineAnnotationRoman, makeLineAnnotationTranslation } from '@gondola-lyrics/model/runtime'
+import {
+  LineType,
+  WordType,
+  deriveLineRomans,
+  getContentText,
+  makeLineAnnotation,
+  makeLineAnnotationRoman,
+  makeLineAnnotationTranslation,
+  makeWordAnnotation,
+  makeWordAnnotationRoman,
+  makeWordAnnotationToken,
+} from '@gondola-lyrics/model/runtime'
 
-import { lowerBound } from './array'
+import { lowerBound, mapShared } from './array'
+import { lowerTag } from './language'
 
 export interface AnnotationSources {
   translations?: runtime.Line[]
@@ -49,6 +61,33 @@ export interface AnnotationMatchOptions {
   getTiming?: (line: runtime.Line) => AnnotationTiming | undefined
 }
 
+export interface AnnotationAttachOptions extends AnnotationMatchOptions {
+  /**
+   * Maximum drift of roman token boundaries outside their matched word, in milliseconds.
+   * Matched boundaries are adjusted to the word range; the original word is unchanged.
+   *
+   * @default 0
+   */
+  wordTolerance?: number
+}
+
+interface WordRange {
+  start: number
+  end?: number
+}
+
+interface RomanPart {
+  word: runtime.Word
+  text: string
+  after: string
+}
+
+interface RomanTarget {
+  word: runtime.Word
+  index: number
+  time: WordRange
+}
+
 interface TimeBucket {
   start: number
   indices: number[]
@@ -75,6 +114,167 @@ type SourceGroups = Map<number, Map<number, number[]>>
 
 const readText = (line: runtime.Line) => {
   return getContentText(line.content).trim()
+}
+
+/**
+ * Combines explicit roman tracks with display-only word aggregations, preferring explicit entries for the same language.
+ *
+ * @param line A lead or background line whose annotations are being displayed or written.
+ *
+ * @returns Roman text for rendering; derived entries must not be stored back on the line.
+ */
+export const getLineRomans = (line: Pick<runtime.Line, 'content' | 'annotation'>): runtime.LineAnnotationRoman[] => {
+  const explicit = line.annotation?.romans ?? []
+  const languages = new Set(explicit.map((item) => lowerTag(item.language)))
+  const derived = deriveLineRomans(line.content).filter((item) => !languages.has(lowerTag(item.language)))
+  return derived.length === 0 ? explicit : [...explicit, ...derived]
+}
+
+const readWordRange = (word: runtime.Word): WordRange | undefined => {
+  const time = word.time
+  if (
+    !time ||
+    !Number.isSafeInteger(time.start) ||
+    time.start < 0 ||
+    (time.end !== undefined && (!Number.isSafeInteger(time.end) || time.end < time.start))
+  ) {
+    return undefined
+  }
+  return { start: time.start, end: time.end }
+}
+
+const containsRomanTime = (source: WordRange, target: WordRange, tolerance: number): boolean => {
+  const end = target.end ?? Number.POSITIVE_INFINITY
+  if (source.start < target.start - tolerance || (source.end !== undefined && source.end > end + tolerance)) {
+    return false
+  }
+  if (source.end === undefined || source.start === source.end) {
+    return target.start === target.end ? source.start <= end + tolerance : source.start < end + tolerance
+  }
+  return true
+}
+
+const readRomanLanguage = (source: runtime.Line) => {
+  const languages = new Set(source.languages.map(lowerTag).filter((language) => language !== undefined))
+  for (const word of source.content?.words ?? []) {
+    const language = word.type === WordType.NORMAL ? lowerTag(word.language) : undefined
+    if (language !== undefined) {
+      languages.add(language)
+    }
+  }
+  return {
+    language: languages.size === 1 ? languages.values().next().value : lowerTag(source.languages[0]),
+    consistent: languages.size <= 1,
+  }
+}
+
+const attachWordRomans = (line: runtime.Line, source: runtime.Line, tolerance: number, language: string | undefined): runtime.Line | undefined => {
+  const content = line.content
+  const sourceContent = source.content
+  if (!content?.words.length || content.text !== undefined || !sourceContent?.words.length || sourceContent.text !== undefined) {
+    return undefined
+  }
+
+  const targets: RomanTarget[] = []
+  const spaces = [0]
+  for (const [index, word] of content.words.entries()) {
+    spaces.push(spaces[index]! + (word.type === WordType.SPACE ? 1 : 0))
+    if (word.type === WordType.SPACE) {
+      continue
+    }
+    const time = readWordRange(word)
+    if (word.type !== WordType.NORMAL || !time) {
+      return undefined
+    }
+    targets.push({ word, index, time })
+  }
+  const parts: RomanPart[] = []
+  for (const word of sourceContent.words) {
+    if (word.type === WordType.SPACE) {
+      const previous = parts.at(-1)
+      if (previous !== undefined) {
+        previous.after += word.text
+      }
+      continue
+    }
+    if (word.type !== WordType.NORMAL || word.text.trim() === '') {
+      return undefined
+    }
+    parts.push({ word, text: word.text, after: '' })
+  }
+  if (parts.length === 0) {
+    return undefined
+  }
+  parts[0]!.text = parts[0]!.text.trimStart()
+  parts.at(-1)!.text = parts.at(-1)!.text.trimEnd()
+
+  const groups = new Map<runtime.Word, runtime.WordAnnotationToken[]>()
+  const assigned: { target: RomanTarget; token: runtime.WordAnnotationToken }[] = []
+  let previousTarget = -1
+  for (const part of parts) {
+    const time = readWordRange(part.word)
+    if (!time) {
+      return undefined
+    }
+    const candidates = targets.filter((target) => containsRomanTime(time, target.time, tolerance))
+    // An unknown source end cannot distinguish overlapping words.
+    const exact =
+      time.end === undefined
+        ? []
+        : candidates.filter((target) => {
+            return target.time.start === time.start && target.time.end === time.end
+          })
+    const points = time.start === time.end ? candidates.filter((target) => target.time.start === target.time.end) : []
+    const contained = candidates.filter((target) => containsRomanTime(time, target.time, 0))
+    const preferred = exact.length > 0 ? exact : points.length > 0 ? points : contained.length > 0 ? contained : candidates
+    if (preferred.length !== 1) {
+      return undefined
+    }
+    const target = preferred[0]!
+    if (target.index < previousTarget || target.word.annotation?.romans.some((item) => lowerTag(item.language) === language)) {
+      return undefined
+    }
+    previousTarget = target.index
+    const bound = target.time.end ?? Number.POSITIVE_INFINITY
+    const start = Math.min(bound, Math.max(target.time.start, time.start))
+    // An open source tail can use its uniquely matched word's end without dividing time by text length.
+    const end = time.end === undefined ? target.time.end : Math.min(bound, Math.max(target.time.start, time.end))
+    const token = makeWordAnnotationToken({ text: part.text, time: { start, end } })
+    const tokens = groups.get(target.word) ?? []
+    tokens.push(token)
+    groups.set(target.word, tokens)
+    assigned.push({ target, token })
+  }
+
+  for (let index = 0; index < assigned.length - 1; index += 1) {
+    const current = assigned[index]!
+    const next = assigned[index + 1]!
+    const separator = parts[index]!.after
+    const spaced = next.target.index > current.target.index && spaces[next.target.index]! > spaces[current.target.index + 1]!
+    if (!spaced) {
+      current.token.text += separator
+      continue
+    }
+    const space = separator.indexOf(' ')
+    if (space === -1) {
+      return undefined
+    }
+    // The model supplies one space between romanized words separated in the original text.
+    current.token.text += separator.slice(0, space)
+    next.token.text = separator.slice(space + 1) + next.token.text
+  }
+
+  const words = mapShared(content.words, (word) => {
+    const tokens = groups.get(word)
+    if (tokens === undefined) {
+      return word
+    }
+    const roman = makeWordAnnotationRoman({ language, tokens })
+    return { ...word, annotation: makeWordAnnotation({ ...word.annotation, romans: [...(word.annotation?.romans ?? []), roman] }) }
+  })
+  const result = { ...line, content: { ...content, words } }
+  const derived = deriveLineRomans(result.content).find((item) => lowerTag(item.language) === language)
+  return derived?.text === readText(source) ? result : undefined
 }
 
 const isReadable = (text: string, preservePlaceholders: boolean): boolean => {
@@ -414,16 +614,7 @@ const matchAnnotationTracks = (lines: runtime.Line[], sources: AnnotationSources
   return { translations: matchAnnotations(index, translations, options), romans: matchAnnotations(index, romans, options) }
 }
 
-/**
- * Attaches matched model lines while preserving existing annotations and unchanged row identities.
- *
- * @param lines Original rows, including timing slots that cannot carry annotations.
- * @param sources Translation and romanization rows as model lines.
- * @param options Matching rules; defaults use exact time and optional extra tolerance.
- *
- * @returns Annotated rows, reusing the original array when no visible annotation changes.
- */
-export const attachLineAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions = {}): runtime.Line[] => {
+const attachTracks = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions, wordTolerance?: number): runtime.Line[] => {
   if (lines.length === 0 || ((sources.translations?.length ?? 0) === 0 && (sources.romans?.length ?? 0) === 0)) {
     return lines
   }
@@ -444,23 +635,57 @@ export const attachLineAnnotations = (lines: runtime.Line[], sources: Annotation
     if (line.type === LineType.INSTRUMENTAL || (!hasTranslation && !hasRoman)) {
       continue
     }
-    const annotation = makeLineAnnotation({
-      translations: [...(line.annotation?.translations ?? [])],
-      romans: [...(line.annotation?.romans ?? [])],
-    })
-    if (hasTranslation) {
-      annotation.translations.push(makeLineAnnotationTranslation({ text: translationText, language: translation!.languages[0] }))
-    }
-    if (hasRoman) {
-      annotation.romans.push(makeLineAnnotationRoman({ text: romanText, language: roman!.languages[0] }))
+    const romanLanguage = hasRoman && wordTolerance !== undefined ? readRomanLanguage(roman!) : undefined
+    const words =
+      romanLanguage?.consistent && wordTolerance !== undefined ? attachWordRomans(line, roman!, wordTolerance, romanLanguage.language) : undefined
+    let annotated = words ?? line
+    if (hasTranslation || (hasRoman && words === undefined)) {
+      const annotation = makeLineAnnotation({
+        translations: [...(annotated.annotation?.translations ?? [])],
+        romans: [...(annotated.annotation?.romans ?? [])],
+      })
+      if (hasTranslation) {
+        annotation.translations.push(makeLineAnnotationTranslation({ text: translationText, language: translation!.languages[0] }))
+      }
+      if (hasRoman && words === undefined) {
+        annotation.romans.push(
+          makeLineAnnotationRoman({ text: romanText, language: romanLanguage === undefined ? roman!.languages[0] : romanLanguage.language }),
+        )
+      }
+      annotated = { ...annotated, annotation }
     }
     if (result === lines) {
       result = lines.slice()
     }
-    result[index] = {
-      ...line,
-      annotation,
-    }
+    result[index] = annotated
   }
   return result
+}
+
+/**
+ * Attaches matched tracks as line annotations while preserving existing annotations and unchanged row identities.
+ *
+ * @param lines Original rows, including timing slots that cannot carry annotations.
+ * @param sources Translation and romanization rows as model lines.
+ * @param options Matching rules; defaults use exact time and optional extra tolerance.
+ *
+ * @returns Annotated rows, reusing the original array when no visible annotation changes.
+ */
+export const attachLineAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions = {}): runtime.Line[] => {
+  return attachTracks(lines, sources, options)
+}
+
+/**
+ * Attaches complete timed roman tracks to words and retains the source line annotation when word matching is incomplete.
+ * Translations remain line-level, and successful word tracks are not duplicated on the line.
+ *
+ * @param lines Original rows before final normalization.
+ * @param sources Translation and romanization rows as model lines.
+ * @param options Independent line matching and word boundary tolerances.
+ *
+ * @returns Annotated rows with original text and word timing preserved.
+ */
+export const attachAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationAttachOptions = {}): runtime.Line[] => {
+  const tolerance = Number.isFinite(options.wordTolerance) ? Math.max(0, options.wordTolerance ?? 0) : 0
+  return attachTracks(lines, sources, options, tolerance)
 }
