@@ -14,6 +14,7 @@ import {
 } from '@gondola-lyrics/model/runtime'
 
 import { lowerBound } from './array'
+import { combinesKana } from './kana'
 import { lowerTag } from './language'
 
 export interface AnnotationSources {
@@ -69,6 +70,14 @@ export interface AnnotationAttachOptions extends AnnotationMatchOptions {
    * @default 0
    */
   wordTolerance?: number
+  /**
+   * Fills unmatched roman fragments from unique two-kana combination starts or equal-sized gaps between timing anchors.
+   * Cross-word checks reuse the word tolerance, and recovered token times are clipped to the original word.
+   * Untimed fragments inherit the word range and are placed by order only in single-word gaps or gaps anchored on both sides.
+   *
+   * @default false
+   */
+  wordFallback?: boolean
 }
 
 interface RomanTarget {
@@ -77,6 +86,13 @@ interface RomanTarget {
   time: runtime.TimeRange
   spaces: number
   tokens: runtime.WordAnnotationToken[]
+}
+
+interface RomanSource {
+  word: runtime.Word
+  time?: runtime.TimeRange
+  separator: string
+  target?: RomanTarget
 }
 
 interface TimeBucket {
@@ -144,7 +160,9 @@ const containsRomanTime = (source: runtime.TimeRange, target: runtime.TimeRange,
   return true
 }
 
-const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], tolerance: number): RomanTarget | undefined => {
+// `null` reports a tie between equal-priority words and `undefined` no containing word at all.
+// Both leave the fragment unmatched; only a tie rules out local recovery.
+const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], tolerance: number): RomanTarget | null | undefined => {
   let matched: RomanTarget | undefined
   let priority = -1
   for (const target of targets) {
@@ -163,7 +181,135 @@ const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], toler
       matched = undefined
     }
   }
-  return matched
+  return matched ?? (priority === -1 ? undefined : null)
+}
+
+const overlapLength = (time: runtime.TimeRange, target: RomanTarget): number => {
+  const finish = time.end ?? time.start
+  return Math.min(finish, target.time.end ?? Number.POSITIVE_INFINITY) - Math.max(time.start, target.time.start)
+}
+
+const sharesLanguage = (targets: (RomanTarget | undefined)[]): boolean => {
+  const languages = new Set(targets.flatMap((target) => (target ? [lowerTag(target.word.language)] : [])).filter(Boolean))
+  return languages.size <= 1
+}
+
+const isOrderedByTime = (targets: RomanTarget[]): boolean => {
+  return targets.every((target, index) => {
+    return target.time.start >= (targets[index - 1]?.time.start ?? 0)
+  })
+}
+
+const canExtendToFollowing = (target: RomanTarget, following: RomanTarget): boolean => {
+  const first = lowerTag(target.word.language)
+  const second = lowerTag(following.word.language)
+  return (!first || !second || first === second) && combinesKana(target.word.text, following.word.text)
+}
+
+const recoverRomanTargets = (
+  sources: RomanSource[],
+  targets: RomanTarget[],
+  tolerance: number,
+  rounding: number,
+  language: string | undefined,
+): boolean => {
+  // Fragment ends drift by the word tolerance, while word adjacency and combination starts only allow timestamp rounding.
+  const slack = Math.max(tolerance, rounding)
+  const used = new Set(sources.flatMap((source) => (source.target ? [source.target] : [])))
+  const reserved = new Set<RomanTarget>()
+  const conflict = (target: RomanTarget) => {
+    return target.word.annotation?.romans.some((item) => lowerTag(item.language) === language)
+  }
+
+  for (const [index, source] of sources.entries()) {
+    const time = source.time
+    if (source.target || !time || time.end === undefined) {
+      continue
+    }
+    // A looser start would let a small kana's own drifted fragment claim the base kana instead.
+    const exact = targets.filter((target) => target.time.start === time.start)
+    const candidates = exact.length ? exact : targets.filter((target) => Math.abs(target.time.start - time.start) <= rounding)
+    if (candidates.length !== 1) {
+      continue
+    }
+    const target = candidates[0]!
+    const following = targets[targets.indexOf(target) + 1]
+    if (!following || following.index !== target.index + 1 || !canExtendToFollowing(target, following)) {
+      continue
+    }
+    if (used.has(target) || used.has(following) || reserved.has(target) || reserved.has(following)) {
+      continue
+    }
+    if (conflict(target) || following.word.annotation?.romans.length) {
+      continue
+    }
+    const previous = sources.slice(0, index).findLast((item) => item.target)?.target
+    const next = sources.slice(index + 1).find((item) => item.target)?.target
+    if (target.index <= (previous?.index ?? -1) || following.index >= (next?.index ?? Number.POSITIVE_INFINITY)) {
+      continue
+    }
+    if (target.time.start < (previous?.time.start ?? 0) || following.time.start > (next?.time.start ?? Number.POSITIVE_INFINITY)) {
+      continue
+    }
+    if (!sharesLanguage([previous, target, following, next])) {
+      continue
+    }
+    // The fragment must run from the base kana into its adjacent small kana and touch nothing else.
+    if (target.time.end === undefined || following.time.end === undefined || Math.abs(following.time.start - target.time.end) > rounding) {
+      continue
+    }
+    if (time.end <= target.time.end || time.end > following.time.end + slack) {
+      continue
+    }
+    if (targets.some((candidate) => candidate !== target && candidate !== following && overlapLength(time, candidate) > slack)) {
+      continue
+    }
+    source.target = target
+    used.add(target)
+    reserved.add(following)
+  }
+
+  for (let start = 0; start < sources.length; start += 1) {
+    if (sources[start]!.target) {
+      continue
+    }
+    let end = start + 1
+    while (end < sources.length && !sources[end]!.target) {
+      end += 1
+    }
+    const previous = sources[start - 1]?.target
+    const next = sources[end]?.target
+    const pending = targets.filter((target) => {
+      return target.index > (previous?.index ?? -1) && target.index < (next?.index ?? Number.POSITIVE_INFINITY) && !reserved.has(target)
+    })
+    if (pending.length !== end - start) {
+      return false
+    }
+    // Order alone places an untimed fragment, so its gap must hold one word or be pinned by anchors on both sides.
+    const untimed = sources.slice(start, end).some((source) => !source.time)
+    if (untimed && pending.length > 1 && (!previous || !next)) {
+      return false
+    }
+    const boundaries = [previous, ...pending, next].filter((target) => target !== undefined)
+    if (!sharesLanguage(boundaries) || !isOrderedByTime(boundaries)) {
+      return false
+    }
+    for (const [offset, target] of pending.entries()) {
+      const source = sources[start + offset]!
+      if (used.has(target) || conflict(target)) {
+        return false
+      }
+      const time = source.time
+      // Equal counts cannot override a fragment pointing into another word.
+      if (time && (overlapLength(time, target) <= 0 || targets.some((candidate) => candidate !== target && overlapLength(time, candidate) > slack))) {
+        return false
+      }
+      source.target = target
+      used.add(target)
+    }
+    start = end - 1
+  }
+  return true
 }
 
 const readRomanLanguage = (source: runtime.Line) => {
@@ -185,6 +331,7 @@ const attachWordRomans = (
   source: AnnotationSource,
   tolerance: number,
   language: string | undefined,
+  fallback: boolean,
 ): runtime.Line | undefined => {
   const content = line.content
   const sourceContent = source.line.content
@@ -206,25 +353,48 @@ const attachWordRomans = (
     targets.push({ word, index, time, spaces, tokens: [] })
   }
 
-  let previous: RomanTarget | undefined
+  const sources: RomanSource[] = []
   let separator = ''
   for (const word of sourceContent.words) {
     if (word.type === WordType.SPACE) {
       separator += word.text
       continue
     }
-    const time = word.type === WordType.NORMAL ? readWordRange(word) : undefined
-    if (!time || !word.text.trim()) {
+    const time = readWordRange(word)
+    if (word.type !== WordType.NORMAL || !word.text.trim() || (word.time && !time) || (!time && !fallback)) {
       return undefined
     }
-    const target = matchRomanTarget(time, targets, tolerance)
+    const target = time ? matchRomanTarget(time, targets, tolerance) : undefined
+    if (target === null || (!target && !fallback)) {
+      return undefined
+    }
+    sources.push({ word, time, separator, target })
+    separator = ''
+  }
+
+  const anchors = sources.flatMap((source) => (source.target ? [source.target] : []))
+  if (anchors.some((target, index) => target.index < (anchors[index - 1]?.index ?? -1))) {
+    return undefined
+  }
+  const recovered = fallback && sources.some((item) => !item.target)
+  if (recovered && !recoverRomanTargets(sources, targets, tolerance, source.rounding, language)) {
+    return undefined
+  }
+
+  let previous: RomanTarget | undefined
+  let previousStart = 0
+  for (const { word, time, separator, target } of sources) {
     if (!target || target.index < (previous?.index ?? -1) || target.word.annotation?.romans.some((item) => lowerTag(item.language) === language)) {
       return undefined
     }
     const bound = target.time.end ?? Number.POSITIVE_INFINITY
-    const start = Math.min(bound, Math.max(target.time.start, time.start))
+    const start = time ? Math.min(bound, Math.max(target.time.start, time.start)) : target.time.start
     // An open source tail can use its uniquely matched word's end without dividing time by text length.
-    const end = time.end === undefined ? target.time.end : Math.min(bound, Math.max(target.time.start, time.end))
+    const end = time?.end === undefined ? target.time.end : Math.min(bound, Math.max(target.time.start, time.end))
+    if (recovered && start < previousStart) {
+      return undefined
+    }
+    previousStart = start
     const token = makeWordAnnotationToken({ text: previous ? word.text : word.text.trimStart(), time: { start, end } })
     if (previous) {
       const last = previous.tokens.at(-1)!
@@ -242,7 +412,6 @@ const attachWordRomans = (
     }
     target.tokens.push(token)
     previous = target
-    separator = ''
   }
   if (!previous) {
     return undefined
@@ -573,7 +742,12 @@ const matchAnnotations = (index: TimeIndex, sources: AnnotationSource[], options
   return matched
 }
 
-const attachTracks = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions, wordTolerance?: number): runtime.Line[] => {
+const attachTracks = (
+  lines: runtime.Line[],
+  sources: AnnotationSources,
+  options: AnnotationAttachOptions,
+  wordTolerance?: number,
+): runtime.Line[] => {
   if (!lines.length || (!sources.translations?.length && !sources.romans?.length)) {
     return lines
   }
@@ -589,7 +763,9 @@ const attachTracks = (lines: runtime.Line[], sources: AnnotationSources, options
       }
       const romanLanguage = kind === 'romans' && wordTolerance !== undefined ? readRomanLanguage(source.line) : undefined
       let annotated =
-        romanLanguage?.consistent && wordTolerance !== undefined ? attachWordRomans(line, source, wordTolerance, romanLanguage.language) : undefined
+        romanLanguage?.consistent && wordTolerance !== undefined
+          ? attachWordRomans(line, source, wordTolerance, romanLanguage.language, options.wordFallback === true)
+          : undefined
       if (!annotated) {
         const language = romanLanguage ? romanLanguage.language : source.line.languages[0]
         const create = kind === 'romans' ? makeLineAnnotationRoman : makeLineAnnotationTranslation
@@ -618,7 +794,7 @@ export const attachLineAnnotations = (lines: runtime.Line[], sources: Annotation
 }
 
 /**
- * Attaches complete timed roman tracks to words and retains the source line annotation when word matching is incomplete.
+ * Attaches complete roman tracks to words using timing and optional local recovery, retaining the source line when matching is incomplete.
  * Translations remain line-level, and successful word tracks are not duplicated on the line.
  *
  * Match before final normalization; original text and word timing are preserved.

@@ -24,6 +24,14 @@ export interface LrcParseOptions {
    * @default 0
    */
   wordAnnotationTolerance?: number
+  /**
+   * Recovers unmatched roman fragments from unique two-kana combination starts or equal-sized gaps between timing anchors.
+   * Only a base kana followed by its small kana combines; doubled consonants and long vowels retain the whole line romanization.
+   * Recovered token times are clipped to their original word; untimed fragments inherit its range.
+   *
+   * @default false
+   */
+  wordAnnotationFallback?: boolean
 }
 
 export type LrcParseInput = LrcContent
@@ -107,7 +115,7 @@ const parseLrcText = (text: string): runtime.Lyric => {
  * Empty timed rows become instrumental lines; source order and missing word times remain for model validation.
  *
  * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
- * Complete timed roman tracks attach to words; other roman tracks retain their source line text.
+ * Complete roman tracks attach to words by timing and optional local recovery; other tracks retain their source line text.
  *
  * `INVALID` means no readable timed lines; the returned diagnostics carry whatever the canonical tree breaks.
  */
@@ -131,6 +139,7 @@ export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions
     {
       tolerance: options.annotationTolerance,
       wordTolerance: options.wordAnnotationTolerance,
+      wordFallback: options.wordAnnotationFallback,
     },
   )
 

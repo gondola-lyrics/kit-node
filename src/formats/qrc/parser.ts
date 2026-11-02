@@ -28,7 +28,7 @@ import {
   makeWordSpace,
 } from '@gondola-lyrics/model/runtime'
 
-import { attachLineAnnotations, isTime, mapShared, parseTime } from '@root/utils'
+import { attachAnnotations, isTime, mapShared, parseTime } from '@root/utils'
 
 import { readLrc } from '../lrc'
 import { finalizeLyric } from '../result'
@@ -41,6 +41,21 @@ export interface QrcParseOptions {
    * @default 0
    */
   annotationTolerance?: number
+  /**
+   * Extra word-boundary tolerance in milliseconds; native QRC tracks allow at least 1ms for rounding.
+   * LRC auxiliary tracks use exact word boundaries by default, and incomplete matches retain the whole line romanization.
+   *
+   * @default 0
+   */
+  wordAnnotationTolerance?: number
+  /**
+   * Recovers unmatched roman fragments from unique two-kana combination starts or equal-sized gaps between timing anchors.
+   * Only a base kana followed by its small kana combines; doubled consonants and long vowels retain the whole line romanization.
+   * Recovered token times are clipped to their original word; untimed fragments inherit its range.
+   *
+   * @default false
+   */
+  wordAnnotationFallback?: boolean
 }
 
 export type QrcParseInput = QrcContent
@@ -402,20 +417,11 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
     return []
   }
 
-  const lines: runtime.Line[] = []
-  for (const raw of text.split(/\r\n?|\n/)) {
-    const line = raw.trimStart()
-    const match = LINE_PATTERN.exec(line)
-    if (match) {
-      const start = Number(match[1])
-      const content = line.slice(match[0].length).replace(WORD_PATTERN, '').trim()
-      const time = { start, end: start + Number(match[2]) }
-      const annotation = !content || content === '//' ? makeLineInstrumental({ time }) : makeLineNormal({ time, content: { text: content } })
-      timings.set(annotation, NATIVE_ANNOTATION_TIMING)
-      lines.push(annotation)
-    }
-  }
+  const { lines } = readLines(text)
   if (lines.length) {
+    for (const line of lines) {
+      timings.set(line, NATIVE_ANNOTATION_TIMING)
+    }
     return lines
   }
 
@@ -431,11 +437,11 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
 }
 
 /**
- * Parses plaintext or XML QRC, retaining explicit timing and word ruby from kana metadata.
+ * Parses plaintext or XML QRC, retaining explicit timing, word romanization, and ruby from kana metadata.
  * Original-track kana supplies ruby and is removed from the returned metadata.
  *
  * @param input Original lyrics with optional translation and romanization tracks.
- * @param options Additional annotation timing tolerance.
+ * @param options Independent line and word tolerances, with optional local roman recovery.
  *
  * @returns Canonical lyrics and source diagnostics; an empty result has INVALID status.
  */
@@ -460,13 +466,19 @@ export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions
   const romanText = source.romans && readText(source.romans)
   const romanLines = readAnnotations(romanText, timings)
 
-  const annotated = attachLineAnnotations(
+  // Each track uses one syntax, so native word boundaries share its timestamp rounding allowance.
+  const rounding = romanLines.some((line) => timings.get(line)?.rounding === 1) ? 1 : 0
+  const wordTolerance = Number.isFinite(options.wordAnnotationTolerance) ? (options.wordAnnotationTolerance ?? 0) : 0
+
+  const annotated = attachAnnotations(
     !rubies ? parsed.lines : attachRubies(parsed.lines, rubies),
     { translations: translationLines, romans: romanLines },
     {
       matchByOrder: true,
       preservePlaceholders: true,
       tolerance: options.annotationTolerance,
+      wordTolerance: Math.max(wordTolerance, rounding),
+      wordFallback: options.wordAnnotationFallback,
       getTiming: (line) => timings.get(line),
     },
   )
