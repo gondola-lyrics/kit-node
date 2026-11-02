@@ -16,3 +16,25 @@ export const mapShared = <T>(items: T[], transform: (item: T) => T): T[] => {
   }
   return result
 }
+
+/**
+ * Finds the first value meeting a lower bound so range queries can skip earlier candidates.
+ *
+ * @param values Values sorted in ascending order.
+ * @param target Inclusive lower bound.
+ *
+ * @returns The first matching index, or the array length when every value is smaller.
+ */
+export const lowerBound = (values: readonly number[], target: number): number => {
+  let left = 0
+  let right = values.length
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2)
+    if (values[middle]! < target) {
+      left = middle + 1
+    } else {
+      right = middle
+    }
+  }
+  return left
+}
