@@ -19,7 +19,9 @@ export const DEFAULT_CREDIT_NAME_SEPARATORS = ['+', '：', '/'] as const
 
 export interface ExtractCreditsOptions {
   /**
-   * Removes extracted source lines only when they carry no background vocals or line/word annotations.
+   * Removes extracted source lines unless they carry background vocals, line annotations, or word translations or romanizations.
+   * Ruby annotations alone do not prevent removal.
+   *
    * Refreshes language usages and falls back to line timing when no word-level content remains.
    *
    * @default false
@@ -108,8 +110,14 @@ const canRemoveSourceLine = (line: runtime.Line): boolean => {
     return false
   }
 
-  const hasWordAnnotation = line.content?.words.some((word) => word.annotation !== undefined) ?? false
-  return !hasWordAnnotation
+  // Credit extraction does not carry translations or romanizations into metadata.
+  // Ruby alone must not keep extracted credits in the lyric stream.
+  return !line.content?.words.some(({ annotation }) => {
+    if (!annotation) {
+      return false
+    }
+    return annotation.translations.length > 0 || annotation.romans.length > 0
+  })
 }
 
 const hasCreditColon = (word: runtime.Word): boolean => {

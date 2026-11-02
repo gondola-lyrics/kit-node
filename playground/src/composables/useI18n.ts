@@ -20,7 +20,8 @@ const EN = {
   'settings.transforms': 'Post-processing',
   'settings.extractCredits': 'Extract credits',
   'settings.removeCreditLines': 'Remove source lines',
-  'settings.removeCreditLinesHint': 'Lines with background vocals or annotations stay in the lyrics.',
+  'settings.removeCreditLinesHint':
+    'Ruby annotations do not prevent removal. Lines with background vocals, translations, or romanizations stay in the lyrics.',
   'settings.creditNameSeparators': 'Name separators',
   'settings.creditNameSeparatorsHint': 'Enter one separator per line; spaces are preserved. Leave empty to keep names together.',
   'settings.removeNonLyric': 'Remove non-lyric lines',
@@ -176,7 +177,7 @@ const ZH: Record<MessageKey, string> = {
   'settings.transforms': '后处理',
   'settings.extractCredits': '提取署名',
   'settings.removeCreditLines': '移除来源行',
-  'settings.removeCreditLinesHint': '有背景人声或注释的来源行仍会保留。',
+  'settings.removeCreditLinesHint': '仅带注音的来源行也会移除；有背景人声、翻译或音译的行仍会保留。',
   'settings.creditNameSeparators': '姓名分隔符',
   'settings.creditNameSeparatorsHint': '每行填写一个分隔符，空格按原样保留；留空不拆分姓名。',
   'settings.removeNonLyric': '移除非正文行',
