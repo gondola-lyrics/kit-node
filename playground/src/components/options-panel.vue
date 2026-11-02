@@ -49,14 +49,26 @@
               <small :id="id + '-language-hint'">{{ t('settings.languageHint') }}</small>
             </div>
             <NumberField
-              v-if="format === 'lrc'"
+              v-if="format === 'lrc' || format === 'qrc'"
               :id="id + '-word-tolerance'"
-              v-model="options.parse.lrc.wordAnnotationTolerance"
+              v-model="annotationOptions.wordAnnotationTolerance"
               :label="t('settings.wordAnnotationTolerance')"
-              :hint="t('settings.wordAnnotationToleranceHint')"
+              :hint="t(format === 'qrc' ? 'settings.qrcWordAnnotationToleranceHint' : 'settings.wordAnnotationToleranceHint')"
               :integer="false"
-              :default-value="defaults.parse.lrc.wordAnnotationTolerance"
+              :default-value="annotationDefaults.wordAnnotationTolerance"
             />
+            <div v-if="format === 'lrc' || format === 'qrc'" :class="$style.field">
+              <label :class="$style.check">
+                <input
+                  :id="id + '-word-fallback'"
+                  v-model="annotationOptions.wordAnnotationFallback"
+                  type="checkbox"
+                  :aria-describedby="id + '-word-fallback-hint'"
+                />
+                <span>{{ t('settings.wordAnnotationFallback') }}</span>
+              </label>
+              <small :id="id + '-word-fallback-hint'">{{ t('settings.wordAnnotationFallbackHint') }}</small>
+            </div>
           </div>
         </template>
         <template v-else>

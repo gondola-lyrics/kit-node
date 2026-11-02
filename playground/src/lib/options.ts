@@ -56,8 +56,8 @@ export type OptionOverrides = {
 export const createOptions = (): PlaygroundOptions => {
   return {
     parse: {
-      lrc: { annotationTolerance: 0, wordAnnotationTolerance: 0 },
-      qrc: { annotationTolerance: 0 },
+      lrc: { annotationTolerance: 0, wordAnnotationTolerance: 0, wordAnnotationFallback: false },
+      qrc: { annotationTolerance: 0, wordAnnotationTolerance: 0, wordAnnotationFallback: false },
       ttml: { language: '' },
     },
     transforms: {
@@ -221,9 +221,12 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
       lrc: {
         annotationTolerance: readAnnotationTolerance(lrcParse.annotationTolerance, defaults.parse.lrc.annotationTolerance),
         wordAnnotationTolerance: readAnnotationTolerance(lrcParse.wordAnnotationTolerance, defaults.parse.lrc.wordAnnotationTolerance),
+        wordAnnotationFallback: readBoolean(lrcParse.wordAnnotationFallback, defaults.parse.lrc.wordAnnotationFallback),
       },
       qrc: {
         annotationTolerance: readAnnotationTolerance(qrcParse.annotationTolerance, defaults.parse.qrc.annotationTolerance),
+        wordAnnotationTolerance: readAnnotationTolerance(qrcParse.wordAnnotationTolerance, defaults.parse.qrc.wordAnnotationTolerance),
+        wordAnnotationFallback: readBoolean(qrcParse.wordAnnotationFallback, defaults.parse.qrc.wordAnnotationFallback),
       },
       ttml: { language: readString(ttmlParse.language, defaults.parse.ttml.language).trim() },
     },

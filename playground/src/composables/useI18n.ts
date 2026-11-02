@@ -87,6 +87,11 @@ const EN = {
   'settings.wordAnnotationTolerance': 'Word romanization tolerance',
   'settings.wordAnnotationToleranceHint':
     'Allows romanization token boundaries to drift beyond their word. Matched boundaries are adjusted; 0 keeps them inside the word range.',
+  'settings.qrcWordAnnotationToleranceHint':
+    'Native QRC romanization allows 1ms rounding; LRC tracks use exact word boundaries. Larger values allow extra drift without changing original words.',
+  'settings.wordAnnotationFallback': 'Recover unmatched word romanization',
+  'settings.wordAnnotationFallbackHint':
+    'Uses two-kana combination starts and local order while keeping reliable matches; doubled consonants and long vowels are not recovered. Recovered romanization times may be shortened to the word range; original words stay unchanged.',
   'settings.qrcAnnotationToleranceHint':
     'Matches exact times first, then row order when lyric counts agree. Tolerance applies to remaining fuzzy matches; 0 adds no extra drift.',
   'settings.language': 'Fallback language',
@@ -242,6 +247,11 @@ const ZH: Record<MessageKey, string> = {
   'settings.annotationToleranceHint': '用于匹配翻译与音译的时间戳，0 表示精确匹配。',
   'settings.wordAnnotationTolerance': '逐词音译容差',
   'settings.wordAnnotationToleranceHint': '允许音译片段边界相对原词的误差，匹配后仅修正片段边界；0 表示不允许越出原词范围。',
+  'settings.qrcWordAnnotationToleranceHint':
+    '默认兼容原生 QRC 音译的 1ms 舍入误差，LRC 辅助轨要求精确词边界。设置更大容差可放宽匹配，原词时间保持不变。',
+  'settings.wordAnnotationFallback': '补齐未匹配的逐词音译',
+  'settings.wordAnnotationFallbackHint':
+    '保留可靠匹配，再按两假名组合起点和局部顺序补齐；促音与长音合并不会恢复。回退音译的时间可能缩短到原词范围，原词保持不变。',
   'settings.qrcAnnotationToleranceHint': '先精确匹配，有效行数相同时按行序补齐；容差仅用于最后的模糊匹配，0 表示不增加额外偏移。',
   'settings.language': '默认语言',
   'settings.languageHint': '留空使用文档语言，文档中声明的 xml:lang 优先。',
