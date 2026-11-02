@@ -56,7 +56,7 @@ export type OptionOverrides = {
 export const createOptions = (): PlaygroundOptions => {
   return {
     parse: {
-      lrc: { annotationTolerance: 0 },
+      lrc: { annotationTolerance: 0, wordAnnotationTolerance: 0 },
       qrc: { annotationTolerance: 0 },
       ttml: { language: '' },
     },
@@ -150,7 +150,7 @@ const readMusicInfo = (value: unknown): RemoveNonLyricLinesOptions['musicInfo'] 
   const info = readObject(value)
   const titles = Array.isArray(info.titles) ? info.titles.filter((title): title is string => typeof title === 'string') : undefined
   const artists = Array.isArray(info.artists) ? info.artists.filter((artist): artist is string => typeof artist === 'string') : undefined
-  return titles === undefined && artists === undefined ? undefined : { titles, artists }
+  return !titles && !artists ? undefined : { titles, artists }
 }
 
 /**
@@ -163,18 +163,18 @@ const readNameSeparators = (value: unknown, fallback: readonly string[]): string
   const separators = [
     ...new Set(
       value.filter((item): item is string => {
-        return typeof item === 'string' && item !== '' && !/[\r\n]/.test(item)
+        return typeof item === 'string' && !!item && !/[\r\n]/.test(item)
       }),
     ),
   ]
-  return value.length > 0 && separators.length === 0 ? [...fallback] : separators
+  return value.length && !separators.length ? [...fallback] : separators
 }
 
 /**
  * Copies JSON bindings for parse snapshots while leaving identity validation to the kit.
  */
 export const readAgentBindings = (value: unknown): ExtractAgentsOptions['bindings'] => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined
   }
   const entries = Object.entries(value)
@@ -220,6 +220,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
     parse: {
       lrc: {
         annotationTolerance: readAnnotationTolerance(lrcParse.annotationTolerance, defaults.parse.lrc.annotationTolerance),
+        wordAnnotationTolerance: readAnnotationTolerance(lrcParse.wordAnnotationTolerance, defaults.parse.lrc.wordAnnotationTolerance),
       },
       qrc: {
         annotationTolerance: readAnnotationTolerance(qrcParse.annotationTolerance, defaults.parse.qrc.annotationTolerance),

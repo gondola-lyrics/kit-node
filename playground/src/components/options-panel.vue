@@ -48,6 +48,15 @@
               />
               <small :id="id + '-language-hint'">{{ t('settings.languageHint') }}</small>
             </div>
+            <NumberField
+              v-if="format === 'lrc'"
+              :id="id + '-word-tolerance'"
+              v-model="options.parse.lrc.wordAnnotationTolerance"
+              :label="t('settings.wordAnnotationTolerance')"
+              :hint="t('settings.wordAnnotationToleranceHint')"
+              :integer="false"
+              :default-value="defaults.parse.lrc.wordAnnotationTolerance"
+            />
           </div>
         </template>
         <template v-else>
@@ -404,7 +413,7 @@ const readMusicNames = (value: string): string[] => {
   return value
     .split(/\r\n?|\n/)
     .map((name) => name.trim())
-    .filter((name) => name !== '')
+    .filter(Boolean)
 }
 
 const updateMusicInfo = (key: 'titles' | 'artists', event: Event) => {
@@ -415,8 +424,8 @@ const updateMusicInfo = (key: 'titles' | 'artists', event: Event) => {
   const draft = key === 'titles' ? musicTitlesText : musicArtistsText
   draft.value = target.value
   const names = readMusicNames(target.value)
-  const musicInfo = { ...options.value.transforms.filters.musicInfo, [key]: names.length === 0 ? undefined : names }
-  options.value.transforms.filters.musicInfo = musicInfo.titles === undefined && musicInfo.artists === undefined ? undefined : musicInfo
+  const musicInfo = { ...options.value.transforms.filters.musicInfo, [key]: names.length ? names : undefined }
+  options.value.transforms.filters.musicInfo = !musicInfo.titles && !musicInfo.artists ? undefined : musicInfo
 }
 
 watch(
@@ -446,10 +455,10 @@ const agentBindingsText = ref(formatAgentBindings(appliedAgentBindings))
 const agentBindingsError = ref<MessageKey | ''>('')
 const agentMatchMode = computed({
   get: () => {
-    return options.value.transforms.agents.bindings === undefined ? 'legacy' : 'bindings'
+    return options.value.transforms.agents.bindings ? 'bindings' : 'legacy'
   },
   set: (mode: 'legacy' | 'bindings') => {
-    if (mode === 'legacy' && options.value.transforms.agents.bindings !== undefined) {
+    if (mode === 'legacy' && options.value.transforms.agents.bindings) {
       savedAgentBindings = readAgentBindings(options.value.transforms.agents.bindings)
     }
     options.value.transforms.agents.bindings = mode === 'bindings' ? (readAgentBindings(savedAgentBindings) ?? {}) : undefined
@@ -472,7 +481,7 @@ const updateAgentBindings = (event: Event) => {
     return
   }
   const bindings = readAgentBindings(parsed)
-  if (bindings === undefined) {
+  if (!bindings) {
     agentBindingsError.value = 'settings.agentBindingsInvalidShape'
     return
   }
@@ -497,7 +506,7 @@ watch(
 )
 
 const readCreditSeparators = (value: string): string[] => {
-  return [...new Set(value.split(/\r\n?|\n/).filter((separator) => separator !== ''))]
+  return [...new Set(value.split(/\r\n?|\n/).filter(Boolean))]
 }
 
 const updateCreditSeparators = (event: Event) => {
@@ -549,12 +558,12 @@ const nonLyricCategoryOptions = computed(() => {
   // The rules may introduce a category before the playground names it, so the raw id remains selectable.
   return NON_LYRIC_CATEGORIES.map((value) => {
     const key = labels[value]
-    return { value, label: key === undefined ? value : t(key) }
+    return { value, label: key ? t(key) : value }
   })
 })
 
 const available = computed(() => {
-  return props.scope === 'result' || props.format !== null
+  return props.scope === 'result' || !!props.format
 })
 const overrides = computed(() => getOptionOverrides(options.value))
 const parseChanges = computed(() => {

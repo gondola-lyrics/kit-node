@@ -175,7 +175,7 @@ export const useParser = () => {
       let lyric = parsed.lyric
       const { credits, filters, agents, instrumental, emphasis, extract, brackets, spaces } = input.options.transforms
       // Fix the music-information candidate before credit removal can expose another first line.
-      if (filters.enabled && filters.musicInfo !== undefined) {
+      if (filters.enabled && filters.musicInfo) {
         lyric = removeNonLyricLines(lyric, { ...filters, categories: [] })
       }
       if (credits.enabled) {

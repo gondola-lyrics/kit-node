@@ -168,7 +168,7 @@ const output = computed(() => {
 })
 
 const invalid = computed(() => {
-  return props.result !== null && props.result.lyric.status !== LyricStatus.VALID
+  return !!props.result && props.result.lyric.status !== LyricStatus.VALID
 })
 const timingSummary = computed(() => {
   const lyric = props.result?.lyric
