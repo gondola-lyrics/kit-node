@@ -52,6 +52,7 @@ export interface WordPiece {
 /**
  * Untagged leading text is preserved; tags without following text produce no piece.
  * A trailing tag still yields an empty piece so it can close the preceding word.
+ * Only recognized time tags split content; other angle-bracket text remains literal.
  */
 export const splitWordTags = (content: string) => {
   const pieces: WordPiece[] = []
@@ -59,6 +60,10 @@ export const splitWordTags = (content: string) => {
   let cursor = 0
 
   for (const match of content.matchAll(WORD_TAG_PATTERN)) {
+    const nextTag = match[1] ?? ''
+    if (parseWordTime(nextTag, 0) === undefined) {
+      continue
+    }
     const at = match.index
     const before = content.slice(cursor, at)
 
@@ -66,7 +71,7 @@ export const splitWordTags = (content: string) => {
       pieces.push({ text: before, tag })
     }
 
-    tag = match[1] ?? ''
+    tag = nextTag
     cursor = at + match[0].length
   }
 

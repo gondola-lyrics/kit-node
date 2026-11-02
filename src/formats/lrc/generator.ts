@@ -1,7 +1,7 @@
 import type { runtime } from '@gondola-lyrics/model'
 import type { LrcContent } from './common'
 
-import { LineType, WordType } from '@gondola-lyrics/model/runtime'
+import { LineType, WordType, getContentText } from '@gondola-lyrics/model/runtime'
 
 import { formatTime } from '@root/utils'
 
@@ -56,27 +56,12 @@ const renderWordTag = (start: number, end: number | undefined, options: LrcGener
 }
 
 /**
- * Plain text joins words as written, including the separators stored as space words.
- */
-const renderPlainText = (line: runtime.Line) => {
-  const content = line.content
-  if (!content) {
-    return ''
-  }
-  if (content.text !== undefined) {
-    return content.text
-  }
-
-  return content.words.map((word) => word.text).join('')
-}
-
-/**
  * Word-level lines interleave tags with their text; untimed words stay untagged.
  */
 const renderSyllableText = (line: runtime.Line, options: LrcGenerateOptionsRequired) => {
   const content = line.content
   if (!content?.words.length) {
-    return renderPlainText(line)
+    return getContentText(content)
   }
 
   return content.words
@@ -140,7 +125,7 @@ const renderLineRow = (line: runtime.Line, options: LrcGenerateOptionsRequired, 
     return time
   }
 
-  const text = wordLevel && line.content?.words.length ? renderSyllableText(line, options) : renderPlainText(line)
+  const text = wordLevel && line.content?.words.length ? renderSyllableText(line, options) : getContentText(line.content)
   return `${time}${text}`
 }
 
