@@ -8,6 +8,7 @@ import type {
   InsertSpacesRule,
   LrcGenerateOptions,
   LrcParseOptions,
+  QrcParseOptions,
   RemoveNonLyricLinesOptions,
   TtmlGenerateOptions,
   TtmlParseOptions,
@@ -20,6 +21,7 @@ const ALL_SPACE_RULES = Object.values(InsertSpacesRules) as InsertSpacesRule[]
 export interface PlaygroundOptions {
   parse: {
     lrc: Required<LrcParseOptions>
+    qrc: Required<QrcParseOptions>
     ttml: Required<TtmlParseOptions>
   }
   transforms: {
@@ -55,6 +57,7 @@ export const createOptions = (): PlaygroundOptions => {
   return {
     parse: {
       lrc: { annotationTolerance: 0 },
+      qrc: { annotationTolerance: 0 },
       ttml: { language: '' },
     },
     transforms: {
@@ -93,6 +96,10 @@ const readString = (value: unknown, fallback: string): string => {
 
 const readBoolean = (value: unknown, fallback: boolean): boolean => {
   return typeof value === 'boolean' ? value : fallback
+}
+
+const readAnnotationTolerance = (value: unknown, fallback: number): number => {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : fallback
 }
 
 const isMilliseconds = (value: unknown, maximum = Number.MAX_SAFE_INTEGER): value is number => {
@@ -195,6 +202,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const transforms = readObject(saved.transforms)
   const generate = readObject(saved.generate)
   const lrcParse = readObject(parse.lrc)
+  const qrcParse = readObject(parse.qrc)
   const ttmlParse = readObject(parse.ttml)
   const credits = readObject(transforms.credits)
   const filters = readObject(transforms.filters)
@@ -206,14 +214,15 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const spaces = readObject(transforms.spaces)
   const lrcGenerate = readObject(generate.lrc)
   const ttmlGenerate = readObject(generate.ttml)
-  const tolerance = lrcParse.annotationTolerance
   const timeFormat = readString(lrcGenerate.timeFormat, defaults.generate.lrc.timeFormat)
 
   return {
     parse: {
       lrc: {
-        annotationTolerance:
-          typeof tolerance === 'number' && Number.isFinite(tolerance) ? Math.max(0, tolerance) : defaults.parse.lrc.annotationTolerance,
+        annotationTolerance: readAnnotationTolerance(lrcParse.annotationTolerance, defaults.parse.lrc.annotationTolerance),
+      },
+      qrc: {
+        annotationTolerance: readAnnotationTolerance(qrcParse.annotationTolerance, defaults.parse.qrc.annotationTolerance),
       },
       ttml: { language: readString(ttmlParse.language, defaults.parse.ttml.language).trim() },
     },
@@ -294,6 +303,7 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const options = readOptions(value)
   const defaults = createOptions()
   const lrcParse = pickOverrides(options.parse.lrc, defaults.parse.lrc)
+  const qrcParse = pickOverrides(options.parse.qrc, defaults.parse.qrc)
   const ttmlParse = pickOverrides(options.parse.ttml, defaults.parse.ttml)
   const credits = pickOverrides(
     { ...options.transforms.credits, nameSeparators: undefined },
@@ -329,9 +339,10 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
     ...(spaces || spaceRules ? { spaces: { ...spaces, ...spaceRules } } : {}),
   }
 
-  if (lrcParse || ttmlParse) {
+  if (lrcParse || qrcParse || ttmlParse) {
     overrides.parse = {
       ...(lrcParse ? { lrc: lrcParse } : {}),
+      ...(qrcParse ? { qrc: qrcParse } : {}),
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }

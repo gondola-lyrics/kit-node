@@ -13,12 +13,12 @@
           :id="'lyrics-input-' + form.mode"
           v-model="content"
           :class="$style.editor"
-          :placeholder="t('input.placeholder')"
+          :placeholder="t(form.mode === 'qrc' ? 'input.qrcPlaceholder' : 'input.placeholder')"
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
         ></textarea>
-        <div v-if="form.mode === 'lrc'" :class="$style.tracks">
+        <div v-if="form.mode === 'lrc' || form.mode === 'qrc'" :class="$style.tracks">
           <div v-for="track in tracks" :key="track.key" :class="$style.track">
             <label :class="$style.trackLabel" :for="'lyrics-input-' + track.key">{{ track.label }}</label>
             <textarea
@@ -38,35 +38,31 @@
 </template>
 
 <script setup lang="ts">
-import type { PlaygroundForm, SourceMode } from '../lib/playground'
+import type { PlaygroundForm } from '../lib/playground'
 
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
+import { SOURCE_CONTENT_KEYS } from '../lib/playground'
 
 import OptionsPanel from './options-panel.vue'
 import ControlTabs from './control-tabs.vue'
 
 const props = defineProps<{ form: PlaygroundForm; storageAvailable: boolean }>()
 const { t } = useI18n()
-const contentKeys: Record<SourceMode, 'autoContent' | 'lrcContent' | 'ttmlContent'> = {
-  auto: 'autoContent',
-  lrc: 'lrcContent',
-  ttml: 'ttmlContent',
-}
-
 const content = computed({
   get: () => {
-    return props.form[contentKeys[props.form.mode]]
+    return props.form[SOURCE_CONTENT_KEYS[props.form.mode]]
   },
   set: (value: string) => {
-    props.form[contentKeys[props.form.mode]] = value
+    props.form[SOURCE_CONTENT_KEYS[props.form.mode]] = value
   },
 })
 const modes = computed(() => {
   return [
     { value: 'auto' as const, label: t('settings.auto'), id: 'mode-auto', controls: 'input-auto' },
     { value: 'lrc' as const, label: 'LRC', id: 'mode-lrc', controls: 'input-lrc' },
+    { value: 'qrc' as const, label: 'QRC', id: 'mode-qrc', controls: 'input-qrc' },
     { value: 'ttml' as const, label: 'TTML', id: 'mode-ttml', controls: 'input-ttml' },
   ]
 })

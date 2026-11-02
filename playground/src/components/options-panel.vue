@@ -27,13 +27,13 @@
         <template v-if="scope === 'parse'">
           <div :class="$style.parse">
             <NumberField
-              v-if="format === 'lrc'"
+              v-if="format === 'lrc' || format === 'qrc'"
               :id="id + '-tolerance'"
-              v-model="options.parse.lrc.annotationTolerance"
+              v-model="annotationOptions.annotationTolerance"
               :label="t('settings.annotationTolerance')"
-              :hint="t('settings.annotationToleranceHint')"
+              :hint="t(format === 'qrc' ? 'settings.qrcAnnotationToleranceHint' : 'settings.annotationToleranceHint')"
               :integer="false"
-              :default-value="defaults.parse.lrc.annotationTolerance"
+              :default-value="annotationDefaults.annotationTolerance"
             />
             <div v-else-if="format === 'ttml'" :class="$style.field">
               <label :for="id + '-language'">{{ t('settings.language') }}</label>
@@ -273,7 +273,7 @@
               </div>
             </div>
           </section>
-          <section v-if="format" :class="$style.section" :aria-labelledby="id + '-generate-title'">
+          <section v-if="format === 'lrc' || format === 'ttml'" :class="$style.section" :aria-labelledby="id + '-generate-title'">
             <div :class="$style.header">
               <h3 :id="id + '-generate-title'" :class="$style.heading">{{ t('settings.generateOptions') }}</h3>
               <button
@@ -389,6 +389,12 @@ const options = defineModel<PlaygroundOptions>({ required: true })
 const { t } = useI18n()
 const opened = ref(false)
 const defaults = createOptions()
+const annotationOptions = computed(() => {
+  return props.format === 'qrc' ? options.value.parse.qrc : options.value.parse.lrc
+})
+const annotationDefaults = computed(() => {
+  return props.format === 'qrc' ? defaults.parse.qrc : defaults.parse.lrc
+})
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
 const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
 const musicTitlesText = ref(options.value.transforms.filters.musicInfo?.titles?.join('\n') ?? '')
@@ -558,7 +564,8 @@ const transformChanges = computed(() => {
   return Object.values(overrides.value?.transforms ?? {}).reduce((count, group) => count + Object.keys(group).length, 0)
 })
 const generateChanges = computed(() => {
-  return props.format ? Object.keys(overrides.value?.generate?.[props.format] ?? {}).length : 0
+  const format = props.format
+  return format === 'lrc' || format === 'ttml' ? Object.keys(overrides.value?.generate?.[format] ?? {}).length : 0
 })
 const changed = computed(() => {
   return props.scope === 'parse' ? parseChanges.value : transformChanges.value + generateChanges.value
@@ -567,6 +574,8 @@ const resetParse = () => {
   const initial = createOptions()
   if (props.format === 'lrc') {
     options.value.parse.lrc = initial.parse.lrc
+  } else if (props.format === 'qrc') {
+    options.value.parse.qrc = initial.parse.qrc
   } else if (props.format === 'ttml') {
     options.value.parse.ttml = initial.parse.ttml
   }

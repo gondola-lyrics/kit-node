@@ -3,7 +3,8 @@ import { ref } from 'vue'
 const EN = {
   'app.language': 'Change language',
   'input.title': 'Input',
-  'input.placeholder': 'Paste LRC or TTML lyrics here…',
+  'input.placeholder': 'Paste LRC, QRC or TTML lyrics here…',
+  'input.qrcPlaceholder': 'Paste plain QRC lyrics or a QRC XML document here…',
   'input.label': 'Input',
   'input.storage': 'Browser storage is unavailable. Your input and settings will not be saved.',
   'input.translations': 'Translations',
@@ -82,6 +83,8 @@ const EN = {
   'settings.generateOptions': 'Generation options',
   'settings.annotationTolerance': 'Annotation tolerance',
   'settings.annotationToleranceHint': 'Matches translation and romanization timestamps. 0 requires an exact match.',
+  'settings.qrcAnnotationToleranceHint':
+    'Matches exact times first, then row order when lyric counts agree. Tolerance applies to remaining fuzzy matches; 0 adds no extra drift.',
   'settings.language': 'Fallback language',
   'settings.languageHint': 'Leave empty to use the document’s language. An explicit xml:lang takes priority.',
   'settings.wordTiming': 'Word timestamps',
@@ -156,7 +159,8 @@ const EN = {
 const ZH: Record<MessageKey, string> = {
   'app.language': '切换语言',
   'input.title': '输入',
-  'input.placeholder': '在这里粘贴 LRC 或 TTML 歌词…',
+  'input.placeholder': '在这里粘贴 LRC、QRC 或 TTML 歌词…',
+  'input.qrcPlaceholder': '在这里粘贴明文 QRC 歌词或 QRC XML 文档…',
   'input.label': '输入',
   'input.storage': '浏览器存储不可用，当前输入与设置不会被保存。',
   'input.translations': '翻译',
@@ -232,6 +236,7 @@ const ZH: Record<MessageKey, string> = {
   'settings.generateOptions': '生成选项',
   'settings.annotationTolerance': '匹配容差',
   'settings.annotationToleranceHint': '用于匹配翻译与音译的时间戳，0 表示精确匹配。',
+  'settings.qrcAnnotationToleranceHint': '先精确匹配，有效行数相同时按行序补齐；容差仅用于最后的模糊匹配，0 表示不增加额外偏移。',
   'settings.language': '默认语言',
   'settings.languageHint': '留空使用文档语言，文档中声明的 xml:lang 优先。',
   'settings.wordTiming': '逐词时间标签',

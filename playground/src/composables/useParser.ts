@@ -6,6 +6,7 @@ import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
 import {
   deriveWordEmphasis,
+  detectFormat,
   extractAgents,
   extractBackgroundLines,
   extractCredits,
@@ -13,12 +14,14 @@ import {
   insertSpacesInLines,
   parse,
   parseLrc,
+  parseQrc,
   parseTtml,
   removeNonLyricLines,
   stripBackgroundBrackets,
 } from '@gondola-lyrics/kit'
 
 import { createOptions, getOptionOverrides, readOptions } from '../lib/options'
+import { SOURCE_CONTENT_KEYS } from '../lib/playground'
 
 const STORAGE_KEY = 'gondola-playground-input-v1'
 const AUTO_PARSE_INTERVAL = 300
@@ -35,6 +38,7 @@ const readForm = (): PlaygroundForm => {
     mode: 'auto',
     autoContent: '',
     lrcContent: '',
+    qrcContent: '',
     ttmlContent: '',
     translations: '',
     romans: '',
@@ -46,13 +50,14 @@ const readForm = (): PlaygroundForm => {
       return defaults
     }
     const saved = raw as Record<string, unknown>
-    const mode = saved.mode === 'lrc' || saved.mode === 'ttml' ? saved.mode : 'auto'
+    const mode = saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'ttml' ? saved.mode : 'auto'
     // An older entry stored one `content` field; it belongs to whichever mode was selected then.
     const legacy = readText(saved, 'content')
     return {
       mode,
       autoContent: readText(saved, 'autoContent') || (mode === 'auto' ? legacy : ''),
       lrcContent: readText(saved, 'lrcContent') || (mode === 'lrc' ? legacy : ''),
+      qrcContent: readText(saved, 'qrcContent') || (mode === 'qrc' ? legacy : ''),
       ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
@@ -123,7 +128,8 @@ export const useParser = () => {
     errorDetail.value = ''
 
     // Only the selected mode's source is parsed, and its annotation tracks travel with it.
-    const content = input.mode === 'lrc' ? input.lrcContent : input.mode === 'ttml' ? input.ttmlContent : input.autoContent
+    const content = input[SOURCE_CONTENT_KEYS[input.mode]]
+    const hasAnnotationTracks = input.mode === 'lrc' || input.mode === 'qrc'
     if (!content.trim()) {
       resetResult()
       return
@@ -136,6 +142,8 @@ export const useParser = () => {
         return
       }
       const start = performance.now()
+      const automaticFormat = input.mode === 'auto' ? detectFormat(content) : undefined
+      const automaticOptions = automaticFormat === 'qrc' ? input.options.parse.qrc : input.options.parse.lrc
       const parsed =
         input.mode === 'lrc'
           ? parseLrc(
@@ -146,9 +154,18 @@ export const useParser = () => {
               },
               input.options.parse.lrc,
             )
-          : input.mode === 'ttml'
-            ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
-            : parse(input.autoContent, { ...input.options.parse.lrc, language: input.options.parse.ttml.language.trim() || undefined })
+          : input.mode === 'qrc'
+            ? parseQrc(
+                {
+                  original: input.qrcContent,
+                  translations: input.translations.trim() ? input.translations : undefined,
+                  romans: input.romans.trim() ? input.romans : undefined,
+                },
+                input.options.parse.qrc,
+              )
+            : input.mode === 'ttml'
+              ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
+              : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
       if (!parsed) {
         result.value = null
         error.value = 'error.unrecognized'
@@ -198,7 +215,7 @@ export const useParser = () => {
         lyric,
         diagnostics,
         elapsed: performance.now() - start,
-        inputBytes: encoder.encode(content + (input.mode === 'lrc' ? input.translations + input.romans : '')).byteLength,
+        inputBytes: encoder.encode(content + (hasAnnotationTracks ? input.translations + input.romans : '')).byteLength,
         encodedBytes,
         encodingError,
         options: input.options,
