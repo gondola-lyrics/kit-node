@@ -30,7 +30,7 @@ import {
 
 import { attachLineAnnotations, isTime, mapShared, parseTime } from '@root/utils'
 
-import { parseWordTime } from '../lrc/utils'
+import { readLrc } from '../lrc'
 import { finalizeLyric } from '../result'
 import { FORMAT, LINE_PATTERN, readContent, readText } from './common'
 
@@ -59,8 +59,6 @@ interface RubyWord {
 const WORD_PATTERN = /\((\d+),(\d+)\)/g
 const META_PATTERN = /^([A-Za-z0-9_-]+)\s*:\s*([\s\S]*)$/
 const META_TAG_PATTERN = /\[([^\]]*)\]/g
-const ANNOTATION_TIME_PATTERN = /^(?:\d+:){0,2}\d+(?:\.(\d+))?$/
-const ANNOTATION_WORD_PATTERN = /<([^>]*)>/g
 const RUBY_PATTERN = /\((\d+),(\d+)\)|(\d+)|([^0-9()]+)/gy
 const RUBY_WORD_PATTERN = /[\p{Script=Han}\p{Number}]/u
 const SEPARATORS = /^\p{White_Space}+$/u
@@ -398,74 +396,33 @@ const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; p
   return { lines, meta, placeholders }
 }
 
-const readAnnotationText = (text: string): string => {
-  if (!text.includes('<')) {
-    return text.trim()
-  }
-  return text
-    .replace(ANNOTATION_WORD_PATTERN, (tag: string, body: string) => {
-      return parseWordTime(body, 0) === undefined ? tag : ''
-    })
-    .trim()
-}
-
 const readAnnotations = (text: string | null | undefined, timings: WeakMap<runtime.Line, AnnotationTiming>): runtime.Line[] => {
   if (!text) {
     return []
   }
 
   const lines: runtime.Line[] = []
-  const appendLine = (start: number, end: number | undefined, text: string, timing: AnnotationTiming) => {
-    const time = { start, end }
-    const line = text === '' ? makeLineInstrumental({ time }) : makeLineNormal({ time, content: { text } })
-    timings.set(line, timing)
-    lines.push(line)
-  }
-  const sourceLines = text.split(/\r\n?|\n/)
-  for (const raw of sourceLines) {
+  for (const raw of text.split(/\r\n?|\n/)) {
     const line = raw.trimStart()
     const match = LINE_PATTERN.exec(line)
     if (match) {
       const start = Number(match[1])
-      const text = line.slice(match[0].length).replace(WORD_PATTERN, '').trim()
-      appendLine(start, start + Number(match[2]), text, NATIVE_ANNOTATION_TIMING)
+      const content = line.slice(match[0].length).replace(WORD_PATTERN, '').trim()
+      const time = { start, end: start + Number(match[2]) }
+      const annotation = content === '' ? makeLineInstrumental({ time }) : makeLineNormal({ time, content: { text: content } })
+      timings.set(annotation, NATIVE_ANNOTATION_TIMING)
+      lines.push(annotation)
     }
   }
   if (lines.length > 0) {
     return lines
   }
 
-  // Reading auxiliary LRC directly keeps row order before model canonicalization sorts equal or drifting times.
-  for (const raw of sourceLines) {
-    const line = raw.trim()
-    const tags = [...line.matchAll(META_TAG_PATTERN)]
-    let group: { start: number; precision: number }[] = []
-    const appendGroup = (content: string) => {
-      if (group.length === 0) {
-        return
-      }
-      const text = readAnnotationText(content)
-      for (const time of group) {
-        appendLine(time.start, undefined, text, { precision: time.precision })
-      }
-      group = []
-    }
-    for (const [index, tag] of tags.entries()) {
-      const body = tag[1]!.trim()
-      const start = parseTime(body)
-      if (start !== undefined) {
-        const clock = ANNOTATION_TIME_PATTERN.exec(body)
-        const precision = clock === null ? 1 : 10 ** Math.max(0, 3 - (clock[1]?.length ?? 0))
-        group.push({ start, precision })
-      }
-      const content = line.slice(tag.index + tag[0].length, tags[index + 1]?.index ?? line.length)
-      if (content.trim() !== '') {
-        appendGroup(content)
-      }
-    }
-    appendGroup('')
-  }
-  return lines
+  return readLrc(text, {
+    onLine: (line, timing) => {
+      timings.set(line, timing)
+    },
+  }).lines
 }
 
 /**
