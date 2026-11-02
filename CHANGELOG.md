@@ -1,3 +1,27 @@
+## v0.5.0 (2026-11-03)
+
+### Features
+
+- **format-lrc:** add word-level romanization support ([1998a61](https://github.com/gondola-lyrics/kit-node/commit/1998a618726fb725a69cfa454570db7f356fa220))
+- **format-qrc:** add ruby parsing support ([e3a2e79](https://github.com/gondola-lyrics/kit-node/commit/e3a2e794f5af035bfc0c053e737c2df7c277beec))
+- **format-qrc:** add parser ([e72615f](https://github.com/gondola-lyrics/kit-node/commit/e72615fb89b72e6fe4a1fe500615bf5d6febbe91))
+- **transform-filter:** add first-line song info removal ([03fd28a](https://github.com/gondola-lyrics/kit-node/commit/03fd28ac2b2f0e79f1eb535e7da4d057201f9ea0))
+- **transform-filter:** add non-lyric line removal helper ([0666ab6](https://github.com/gondola-lyrics/kit-node/commit/0666ab6ad87f55db77e105ef56e8c5c0975191f4))
+- **transform-agent:** add agent extraction helper ([58bea8d](https://github.com/gondola-lyrics/kit-node/commit/58bea8d3d84b046af542eaff62cd5bcfa0b33a34))
+- **transform-credit:** add credit extraction helper ([7d04f1e](https://github.com/gondola-lyrics/kit-node/commit/7d04f1ee892d290c1596341ec93c6b7723c4c745))
+- add fallback for word-level romanization ([f8a1605](https://github.com/gondola-lyrics/kit-node/commit/f8a1605b0d611410648ee60ad3780fda6f494f7c))
+
+### Fixes
+
+- **transform-credit:** remove source lines containing ruby ([93f3167](https://github.com/gondola-lyrics/kit-node/commit/93f31678c2058a50f2da9489056346434c4d7c4d))
+- **format-lrc:** preserve overlapping word timing ([ccc19f2](https://github.com/gondola-lyrics/kit-node/commit/ccc19f2c4e7cfa1cb9774b52bc1e6d2d6f186f9a))
+
+### Refactoring
+
+- **format-qrc:** reuse lrc reader ([2eec478](https://github.com/gondola-lyrics/kit-node/commit/2eec47872bada4945b172a18c236cfb2d06a14b6))
+- **format-lrc:** extract reader ([fd9cc39](https://github.com/gondola-lyrics/kit-node/commit/fd9cc39e237cd31584f7f2ae0cb376503086405a))
+- simplify conditional logic ([a0851c1](https://github.com/gondola-lyrics/kit-node/commit/a0851c1a1d901404e37f228af01c36d161542c29))
+
 ## v0.4.0 (2026-10-28)
 
 ### Features
