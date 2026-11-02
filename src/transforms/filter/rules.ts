@@ -26,7 +26,7 @@ export const NON_LYRIC_CATEGORIES: readonly string[] = [...new Set(nonLyricGroup
  * Keeps rule order so earlier groups still take precedence within a selection; undefined selects every group.
  */
 export const selectNonLyricGroups = (categories: readonly string[] | undefined): readonly NonLyricGroup[] => {
-  if (categories === undefined) {
+  if (!categories) {
     return nonLyricGroups
   }
   return nonLyricGroups.filter((group) => categories.includes(group.category))
@@ -38,7 +38,7 @@ export const selectNonLyricGroups = (categories: readonly string[] | undefined):
  */
 export const matchNonLyricCategory = (text: string, groups: readonly NonLyricGroup[]): string | undefined => {
   const key = toRuleMatchKey(text)
-  if (key === '') {
+  if (!key) {
     return undefined
   }
   for (const group of groups) {

@@ -60,13 +60,13 @@ export const splitWordTags = (content: string) => {
 
   for (const match of content.matchAll(WORD_TAG_PATTERN)) {
     const nextTag = match[1] ?? ''
-    if (parseWordTime(nextTag, 0) === undefined) {
+    if (!parseWordTime(nextTag, 0)) {
       continue
     }
     const at = match.index
     const before = content.slice(cursor, at)
 
-    if (before || tag !== undefined) {
+    if (before || tag) {
       pieces.push({ text: before, tag })
     }
 
@@ -77,7 +77,7 @@ export const splitWordTags = (content: string) => {
   const tail = content.slice(cursor)
   if (tail) {
     pieces.push({ text: tail, tag })
-  } else if (tag !== undefined) {
+  } else if (tag) {
     pieces.push({ text: '', tag })
   }
 

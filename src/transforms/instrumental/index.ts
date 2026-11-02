@@ -56,7 +56,7 @@ const readOccupiedTimeline = (lyric: runtime.Lyric) => {
   let firstSungStart = Infinity
 
   const append = (time: runtime.TimeRange | undefined, sung: boolean): boolean => {
-    if (time === undefined || validateTimeRange(time).length > 0) {
+    if (!time || validateTimeRange(time).length) {
       return false
     }
 
@@ -94,7 +94,7 @@ const mergeLines = (lines: runtime.Line[], inserted: runtime.Line[]): runtime.Li
   let source = lines
   for (const [index, line] of lines.entries()) {
     const previous = lines[index - 1]
-    if (previous !== undefined && compareLineTimes(previous, line) > 0) {
+    if (previous && compareLineTimes(previous, line) > 0) {
       source = [...lines].sort(compareLineTimes)
       break
     }
@@ -104,7 +104,7 @@ const mergeLines = (lines: runtime.Line[], inserted: runtime.Line[]): runtime.Li
   let nextIndex = 0
   for (const line of source) {
     let next = inserted[nextIndex]
-    while (next !== undefined && compareLineTimes(next, line) < 0) {
+    while (next && compareLineTimes(next, line) < 0) {
       merged.push(next)
       nextIndex += 1
       next = inserted[nextIndex]
@@ -127,7 +127,7 @@ export const insertInstrumentalLines = (lyric: runtime.Lyric, options: InsertIns
   const minDuration = readMinimum(options.minDuration, 10000, 'minDuration')
   const minIntroDuration = readMinimum(options.minIntroDuration, 5000, 'minIntroDuration')
   const endTime = readEndTime(options.endTime)
-  if ((lyric.timing !== Timing.LINE && lyric.timing !== Timing.WORD) || lyric.lines.length === 0) {
+  if ((lyric.timing !== Timing.LINE && lyric.timing !== Timing.WORD) || !lyric.lines.length) {
     return lyric
   }
 
@@ -159,7 +159,7 @@ export const insertInstrumentalLines = (lyric: runtime.Lyric, options: InsertIns
     appendGap(endTime, minDuration)
   }
 
-  if (inserted.length === 0) {
+  if (!inserted.length) {
     return lyric
   }
   return { ...lyric, lines: mergeLines(lyric.lines, inserted) }

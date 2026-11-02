@@ -7,5 +7,5 @@ import { hasTimedLines, readContent } from './common'
  */
 export const detectQrc = (input: unknown): boolean => {
   const content = readContent(input)
-  return content !== null && hasTimedLines(content.original)
+  return !!content && hasTimedLines(content.original)
 }

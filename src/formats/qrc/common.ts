@@ -32,16 +32,16 @@ export const readText = (source: string): string | null => {
   }
 
   const document = parseXml(source)
-  if (document === null) {
+  if (!document) {
     return null
   }
   const root = document.children.find((node): node is XmlElement => node.nodeType === XmlNodeType.element)
-  if (root === undefined || !XML_ROOT_NAMES.includes(root.localName)) {
+  if (!root || !XML_ROOT_NAMES.includes(root.localName)) {
     return null
   }
 
   const pending = [root]
-  while (pending.length > 0) {
+  while (pending.length) {
     const element = pending.pop()!
     const content = getXmlAttribute(element, 'LyricContent')
     if (content !== undefined) {
@@ -64,7 +64,7 @@ export const readText = (source: string): string | null => {
  */
 export const readContent = (input: unknown): QrcContent | null => {
   const value = typeof input === 'string' ? { original: input } : input
-  if (typeof value !== 'object' || value === null) {
+  if (!value || typeof value !== 'object') {
     return null
   }
   const source = value as Partial<QrcContent>

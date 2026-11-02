@@ -31,14 +31,14 @@ const toMusicInfoMatchText = (text: string): string => {
 }
 
 const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<RemoveNonLyricLinesOptions['musicInfo']>) => {
-  const titles = (musicInfo.titles ?? []).map(toMusicInfoMatchText).filter((title) => title !== '')
-  const artists = (musicInfo.artists ?? []).map(toMusicInfoMatchText).filter((artist) => artist !== '')
-  if (titles.length === 0 || artists.length === 0) {
+  const titles = (musicInfo.titles ?? []).map(toMusicInfoMatchText).filter(Boolean)
+  const artists = (musicInfo.artists ?? []).map(toMusicInfoMatchText).filter(Boolean)
+  if (!titles.length || !artists.length) {
     return -1
   }
 
   const index = lyric.lines.findIndex((line) => {
-    return line.type === LineType.NORMAL && getContentText(line.content).trim() !== ''
+    return line.type === LineType.NORMAL && !!getContentText(line.content).trim()
   })
   if (index === -1) {
     return -1
@@ -50,7 +50,7 @@ const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<Rem
   }
   const left = toMusicInfoMatchText(parts[0]!)
   const right = toMusicInfoMatchText(parts[1]!)
-  if (left === '' || right === '') {
+  if (!left || !right) {
     return -1
   }
 
@@ -70,8 +70,8 @@ const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<Rem
  */
 export const removeNonLyricLines = (lyric: runtime.Lyric, options: RemoveNonLyricLinesOptions = {}): runtime.Lyric => {
   const groups = selectNonLyricGroups(options.categories)
-  const musicInfoIndex = options.musicInfo === undefined ? -1 : findFirstMusicInfoLine(lyric, options.musicInfo)
-  if (groups.length === 0 && musicInfoIndex === -1) {
+  const musicInfoIndex = options.musicInfo ? findFirstMusicInfoLine(lyric, options.musicInfo) : -1
+  if (!groups.length && musicInfoIndex === -1) {
     return lyric
   }
 

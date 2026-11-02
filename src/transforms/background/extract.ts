@@ -90,7 +90,7 @@ const splitText = (text: string) => {
   return {
     main: main.trim().replaceAll(/\s{2,}/gu, ' '),
     runs: runs.filter((run) => {
-      return run.text.trim() !== ''
+      return !!run.text.trim()
     }),
     length: chars.length,
   }
@@ -166,14 +166,14 @@ const splitWords = (words: runtime.Word[]) => {
     main,
     runs: runs.filter((run) => {
       return run.some((word) => {
-        return word.text.trim() !== ''
+        return !!word.text.trim()
       })
     }),
   }
 }
 
 const mapSpan = (range: runtime.TimeRange, length: number, run: TextRun) => {
-  if (range.end === undefined || length === 0) {
+  if (range.end === undefined || !length) {
     return makeTimeRange({ start: range.start, end: range.end })
   }
   const span = range.end - range.start
@@ -187,7 +187,7 @@ const mapSpan = (range: runtime.TimeRange, length: number, run: TextRun) => {
  */
 const readWordRange = (words: runtime.Word[], fallback: runtime.TimeRange) => {
   const timed = words.filter((word) => {
-    return isNormalWord(word) && word.time !== undefined
+    return isNormalWord(word) && !!word.time
   })
   const first = timed[0]?.time
   const last = timed.at(-1)?.time
@@ -229,7 +229,7 @@ const boundOpenBackgrounds = (lines: runtime.Line[]) => {
   const last = lines.length - 1
   return lines.map((line, index) => {
     const open = line.backgrounds.filter((background) => {
-      return background.time !== undefined && background.time.end === undefined
+      return !!background.time && background.time.end === undefined
     })
     if (!open.length) {
       return line
@@ -364,7 +364,7 @@ const isBracketOnlyLine = (line: runtime.Line | undefined) => {
     return false
   }
   const { main, runs } = splitText(readLineText(line))
-  return runs.length > 0 && !main
+  return !!runs.length && !main
 }
 
 /**
@@ -399,8 +399,8 @@ const joinCrossLine = (lines: runtime.Line[], wordLevel: boolean) => {
     if (line.type === LineType.NORMAL && next?.type === LineType.NORMAL && parentIndex !== -1) {
       const opened = splitText(readLineText(line))
       const closed = splitText(readLineText(next))
-      const opens = opened.runs.length === 0 && isOpenBracket(opened.main.charAt(0))
-      const closes = closed.runs.length === 0 && isCloseBracket(closed.main.charAt(closed.main.length - 1))
+      const opens = !opened.runs.length && isOpenBracket(opened.main.charAt(0))
+      const closes = !closed.runs.length && isCloseBracket(closed.main.charAt(closed.main.length - 1))
       if (opens && closes) {
         const start = line.time?.start
         const end = next.time?.end ?? next.time?.start

@@ -71,10 +71,10 @@ const readRubyEntries = (value: string): RubySource[] | undefined => {
   let text = ''
   let cursor = 0
   const finish = (): boolean => {
-    if (text.trim() !== '') {
+    if (text.trim()) {
       tokens.push(makeWordAnnotationToken({ text }))
     }
-    if (length === 0 || tokens.length === 0) {
+    if (!length || !tokens.length) {
       return false
     }
     entries.push({ length, ruby: makeWordAnnotationRuby({ tokens }) })
@@ -86,24 +86,24 @@ const readRubyEntries = (value: string): RubySource[] | undefined => {
   // Consume timing parentheses as one token so their digits cannot become coverage markers.
   for (const match of value.matchAll(RUBY_PATTERN)) {
     cursor = match.index + match[0].length
-    if (match[3] !== undefined) {
-      if (length !== 0 && !finish()) {
+    if (match[3]) {
+      if (length && !finish()) {
         return undefined
       }
       length = Number(match[3])
       if (!Number.isSafeInteger(length) || length <= 0) {
         return undefined
       }
-    } else if (match[1] !== undefined) {
+    } else if (match[1]) {
       const start = Number(match[1])
       const end = start + Number(match[2])
-      if (length === 0 || text.trim() === '' || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+      if (!length || !text.trim() || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
         return undefined
       }
       tokens.push(makeWordAnnotationToken({ text, time: { start, end } }))
       text = ''
     } else {
-      if (length === 0) {
+      if (!length) {
         return undefined
       }
       text += match[4]!
@@ -139,8 +139,8 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
   const timed = new Set<number>()
   const claims = new Map<number, number[]>()
   for (const [index, source] of sources.entries()) {
-    const times = source.ruby.tokens.flatMap((token) => (token.time === undefined ? [] : [token.time]))
-    if (times.length === 0) {
+    const times = source.ruby.tokens.flatMap((token) => (token.time ? [token.time] : []))
+    if (!times.length) {
       continue
     }
     timed.add(index)
@@ -163,7 +163,7 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
     })
     if (times.length === source.ruby.tokens.length) {
       const exact = candidates.filter((target) => words[target]!.word.time!.end === end)
-      if (exact.length > 0) {
+      if (exact.length) {
         candidates = exact
       }
     }
@@ -200,13 +200,13 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
       }
       pending.push(source)
     }
-    if (!compatible || pending.length === 0) {
+    if (!compatible || !pending.length) {
       continue
     }
     const candidates: number[] = []
     for (let target = firstWord + 1; target < lastWord; target += 1) {
       const candidate = words[target]
-      if (candidate === undefined) {
+      if (!candidate) {
         compatible = false
         break
       }
@@ -238,15 +238,15 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
  * @returns Annotated rows, reusing arrays and nodes when they are unchanged.
  */
 const attachRubies = (lines: runtime.Line[], sources: RubySource[]): runtime.Line[] => {
-  if (sources.length === 0) {
+  if (!sources.length) {
     return lines
   }
   const words: (RubyWord | undefined)[] = []
   for (const line of lines) {
-    if (line.type !== LineType.NORMAL || getContentText(line.content).trim() === '//') {
+    if (line.type !== LineType.NORMAL) {
       continue
     }
-    if (line.content?.text !== undefined && RUBY_WORD_PATTERN.test(line.content.text)) {
+    if (line.content?.text && RUBY_WORD_PATTERN.test(line.content.text)) {
       // Text-only rows must still block readings from shifting onto later words.
       words.push(undefined)
       continue
@@ -258,18 +258,18 @@ const attachRubies = (lines: runtime.Line[], sources: RubySource[]): runtime.Lin
     }
   }
   const matched = matchRubies(words, sources)
-  if (matched.size === 0) {
+  if (!matched.size) {
     return lines
   }
   const annotations = new Map([...matched].map(([source, target]) => [words[target]!.word, sources[source]!.ruby]))
   return mapShared(lines, (line) => {
     const content = line.content
-    if (content === undefined) {
+    if (!content) {
       return line
     }
     const words = mapShared(content.words, (word) => {
       const ruby = annotations.get(word)
-      if (ruby === undefined) {
+      if (!ruby) {
         return word
       }
       return { ...word, annotation: makeWordAnnotation({ ...word.annotation, rubies: [...(word.annotation?.rubies ?? []), ruby] }) }
@@ -331,7 +331,7 @@ const readTimeRange = (startText: string, durationText: string): NonNullable<run
 
 const appendWords = (words: runtime.Word[], text: string, time?: runtime.Word['time']) => {
   for (const fragment of text.split(/(\p{White_Space}+)/u)) {
-    if (fragment === '') {
+    if (!fragment) {
       continue
     }
     if (SEPARATORS.test(fragment)) {
@@ -370,14 +370,15 @@ const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; p
       const time = readTimeRange(match[1]!, match[2]!)
       const text = line.slice(match[0].length)
       const words = readWords(text)
-      const contentText = (words === undefined ? text : getWordsText(words)).trim()
-      if (contentText === '') {
+      const contentText = (words ? getWordsText(words) : text).trim()
+      const placeholder = contentText === '//'
+      if (placeholder) {
+        placeholders.add(lines.length)
+      }
+      if (!contentText || placeholder) {
         lines.push(makeLineInstrumental({ time }))
       } else {
-        if (contentText === '//') {
-          placeholders.add(lines.length)
-        }
-        const content = words === undefined ? makeLineContentText(text) : makeLineContentWords(words)
+        const content = words ? makeLineContentWords(words) : makeLineContentText(text)
         lines.push(makeLineNormal({ time, content }))
       }
       continue
@@ -409,20 +410,24 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
       const start = Number(match[1])
       const content = line.slice(match[0].length).replace(WORD_PATTERN, '').trim()
       const time = { start, end: start + Number(match[2]) }
-      const annotation = content === '' ? makeLineInstrumental({ time }) : makeLineNormal({ time, content: { text: content } })
+      const annotation = !content || content === '//' ? makeLineInstrumental({ time }) : makeLineNormal({ time, content: { text: content } })
       timings.set(annotation, NATIVE_ANNOTATION_TIMING)
       lines.push(annotation)
     }
   }
-  if (lines.length > 0) {
+  if (lines.length) {
     return lines
   }
 
-  return readLrc(text, {
+  readLrc(text, {
     onLine: (line, timing) => {
-      timings.set(line, timing)
+      // QRC placeholders must keep both their timing slot and source precision after conversion.
+      const annotation = getContentText(line.content).trim() === '//' ? makeLineInstrumental({ time: line.time }) : line
+      timings.set(annotation, timing)
+      lines.push(annotation)
     },
-  }).lines
+  })
+  return lines
 }
 
 /**
@@ -443,7 +448,7 @@ export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions
   const parsed = readLines(source.original)
   const meta = parsed.meta
   const rubies = readRubies(meta)
-  if (parsed.lines.length === 0) {
+  if (!parsed.lines.length) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta }))
   }
 
@@ -467,11 +472,11 @@ export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions
   )
 
   // Removing placeholders before alignment would shift annotations at duplicate timestamps.
-  const lines = parsed.placeholders.size === 0 ? annotated : annotated.filter((_, index) => !parsed.placeholders.has(index))
+  const lines = parsed.placeholders.size ? annotated.filter((_, index) => !parsed.placeholders.has(index)) : annotated
   return finalizeLyric(
     makeLyric({
       format: FORMAT,
-      status: lines.length === 0 ? LyricStatus.INVALID : LyricStatus.VALID,
+      status: lines.length ? LyricStatus.VALID : LyricStatus.INVALID,
       timing: lines.some(isWordLevelLine) ? Timing.WORD : Timing.LINE,
       meta,
       lines,

@@ -186,7 +186,7 @@ const readText = (element: XmlElement, inherited: boolean): string => {
  * Preserves the parser's whitespace segmentation when turning text into word drafts.
  */
 const splitWords = (text: string, language?: string): WordDraft[] => {
-  if (text === '') {
+  if (!text) {
     return []
   }
   if (!WORD_SEPARATOR_PATTERN.test(text)) {
@@ -196,7 +196,7 @@ const splitWords = (text: string, language?: string): WordDraft[] => {
   const words: WordDraft[] = []
 
   for (const run of text.split(/(\p{White_Space}+)/u)) {
-    if (run !== '') {
+    if (run) {
       const space = /^\p{White_Space}+$/u.test(run)
       words.push({ text: run, space, language: space ? undefined : language, rubies: [] })
     }
@@ -209,7 +209,7 @@ const splitWords = (text: string, language?: string): WordDraft[] => {
  * Distinguishes indentation runs from separators using the parser's existing rule.
  */
 const isFormattingWhitespace = (text: string) => {
-  return text.trim() === '' && text.includes('\n')
+  return !text.trim() && text.includes('\n')
 }
 
 /**
@@ -225,7 +225,7 @@ const buildWords = (draft: LineDraft): runtime.Word[] => {
     }
 
     const time = word.start === undefined ? undefined : makeTimeRange({ start: word.start, end: word.end })
-    if (word.rubies.length === 0) {
+    if (!word.rubies.length) {
       words.push(makeWordNormal({ text: word.text, time, language: word.language }))
       continue
     }
@@ -253,7 +253,7 @@ const buildWords = (draft: LineDraft): runtime.Word[] => {
  * Builds only annotations explicitly present in the source drafts.
  */
 const buildLineAnnotation = (draft: LineDraft): runtime.LineAnnotation | undefined => {
-  if (draft.translations.length === 0 && draft.romans.length === 0) {
+  if (!draft.translations.length && !draft.romans.length) {
     return undefined
   }
 
@@ -301,9 +301,9 @@ const groupElements = (
   const result = new Map<string, ElementContext[]>()
   const stack: ElementContext[] = [{ element: root, preserveSpace, language }]
 
-  while (stack.length > 0) {
+  while (stack.length) {
     const entry = stack.pop()
-    if (entry === undefined) {
+    if (!entry) {
       continue
     }
     const element = entry.element
@@ -312,7 +312,7 @@ const groupElements = (
     if (wanted.has(element.localName)) {
       const group = result.get(element.localName)
       const context = { element, preserveSpace: currentSpace, language: currentLanguage }
-      if (group === undefined) {
+      if (!group) {
         result.set(element.localName, [context])
       } else {
         group.push(context)
@@ -388,7 +388,7 @@ const readRuby = (container: XmlElement, preserveSpace: boolean, language?: stri
     return token.start !== undefined
   })
   // Older AMLL containers state timing only on their annotation tokens.
-  const time = readSpanTime(container) ?? rubyTime ?? (first === undefined ? undefined : { start: first.start, end: last?.end })
+  const time = readSpanTime(container) ?? rubyTime ?? (first ? { start: first.start, end: last?.end } : undefined)
 
   return {
     text: base,
@@ -396,7 +396,7 @@ const readRuby = (container: XmlElement, preserveSpace: boolean, language?: stri
     start: time?.start,
     end: time?.end,
     language: baseLanguage,
-    rubies: tokens.length === 0 ? [] : [{ start: rubyTime?.start, end: rubyTime?.end, language: rubyLanguage, tokens }],
+    rubies: tokens.length ? [{ start: rubyTime?.start, end: rubyTime?.end, language: rubyLanguage, tokens }] : [],
   }
 }
 
@@ -431,7 +431,7 @@ const readWords = (element: XmlElement, preserveSpace: boolean, language?: strin
 
     if (getXmlAttribute(child, 'ruby') === RUBY_CONTAINER) {
       const ruby = readRuby(child, preserveSpace, language)
-      if (ruby !== undefined) {
+      if (ruby) {
         for (const part of splitWords(ruby.text)) {
           words.push(part.space ? part : { ...ruby, text: part.text })
         }
@@ -448,7 +448,7 @@ const readWords = (element: XmlElement, preserveSpace: boolean, language?: strin
 
     const time = readSpanTime(child)
     for (const part of splitWords(text, readLanguage(child, language))) {
-      if (!part.space && time !== undefined) {
+      if (!part.space && time) {
         part.start = time.start
         part.end = time.end
         wordLevel = true
@@ -492,7 +492,7 @@ const readLine = (element: XmlElement, preserveSpace: boolean, language?: string
   preserveSpace = readPreserveSpace(element, preserveSpace)
   language = readLanguage(element, language)
   const time = readLineTime(element)
-  if (time === undefined) {
+  if (!time) {
     return undefined
   }
 
@@ -549,7 +549,7 @@ const readBackground = (element: XmlElement, preserveSpace: boolean, language?: 
   preserveSpace = readPreserveSpace(element, preserveSpace)
   language = readLanguage(element, language)
   const read = readWords(element, preserveSpace, language)
-  if (read.words.length === 0) {
+  if (!read.words.length) {
     return undefined
   }
 
@@ -604,7 +604,7 @@ const buildBackground = (draft: LineDraft): runtime.LineBackground => {
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
     agents: draft.agentId === undefined ? [] : [draft.agentId],
-    languages: draft.language === undefined ? [] : [draft.language],
+    languages: draft.language ? [draft.language] : [],
     content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
   })
@@ -618,7 +618,7 @@ const buildLine = (draft: LineDraft): runtime.Line => {
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
     agents: draft.agentId === undefined ? [] : [draft.agentId],
-    languages: draft.language === undefined ? [] : [draft.language],
+    languages: draft.language ? [draft.language] : [],
     content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
     backgrounds: draft.backgrounds.map(buildBackground),
@@ -641,7 +641,7 @@ const readAgents = (elements: ElementContext[]): runtime.Agent[] => {
         return makeText({ text: readText(name, preserveSpace), language: readLanguage(name, language) })
       })
       .filter((name) => {
-        return name.text !== ''
+        return !!name.text
       })
 
     const kind = readAgentType(getXmlAttribute(element, 'type'))
@@ -669,10 +669,10 @@ const readCredits = (elements: ElementContext[], meta: runtime.Meta) => {
       return makeText({ text: readText(element, preserveSpace), language })
     })
     .filter((name) => {
-      return name.text !== ''
+      return !!name.text
     })
 
-  if (names.length === 0) {
+  if (!names.length) {
     return
   }
 
@@ -722,7 +722,7 @@ const applyAmllMeta = (meta: runtime.Meta, element: XmlElement, language?: strin
  * A replacement translation rewrites the line's text, which is how a source swaps one script for another.
  */
 const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
-  if (lineMap.size === 0) {
+  if (!lineMap.size) {
     return
   }
 
@@ -806,13 +806,12 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   const language = readLanguage(root, lowerTag(options.language))
   const body = findElements(root, 'body', false, true, language)[0]
   const metadata = findElements(root, 'metadata', false, true, language)[0]
-  const metadataElements =
-    metadata === undefined
-      ? new Map<string, ElementContext[]>()
-      : groupElements(metadata.element, METADATA_NAMES, metadata.preserveSpace, false, metadata.language)
+  const metadataElements = metadata
+    ? groupElements(metadata.element, METADATA_NAMES, metadata.preserveSpace, false, metadata.language)
+    : new Map<string, ElementContext[]>()
   const meta = makeMeta()
 
-  if (language !== undefined) {
+  if (language) {
     meta.language = language
   }
 
@@ -846,7 +845,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
 
   attachHeadAnnotations(metadataElements, lineMap, backgroundMap)
 
-  if (drafts.length === 0) {
+  if (!drafts.length) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta, extra }))
   }
 

@@ -44,7 +44,7 @@ const prepareBindings = (
   bindings: ExtractAgentsOptions['bindings'],
   agents: readonly runtime.Agent[],
 ): Map<string, readonly string[]> | undefined => {
-  if (bindings === undefined) {
+  if (!bindings) {
     return undefined
   }
   const knownIds = new Set(agents.map((agent) => agent.id))
@@ -66,7 +66,7 @@ const prepareBindings = (
 const isClockTimeColon = (before: string, after: string): boolean => {
   const hour = /(\d+)$/.exec(before)?.[1]
   const minute = /^(\d+)/.exec(after)?.[1]
-  if (hour === undefined || minute === undefined) {
+  if (!hour || !minute) {
     return false
   }
   return hour.length <= 2 && Number(hour) <= 24 && minute.length <= 2 && Number(minute) <= 60
@@ -76,12 +76,12 @@ const isClockTimeColon = (before: string, after: string): boolean => {
  * Cuts only source text, so retained word ranges and annotations do not need fabricated character timings.
  */
 const removePrefix = (content: runtime.LineContent | undefined, length: number): runtime.LineContent | undefined => {
-  if (content === undefined) {
+  if (!content) {
     return undefined
   }
   if (content.text !== undefined) {
     const text = content.text.slice(length).trim()
-    return text === '' ? undefined : makeLineContentText(text)
+    return text ? makeLineContentText(text) : undefined
   }
 
   const words: runtime.Word[] = []
@@ -94,14 +94,14 @@ const removePrefix = (content: runtime.LineContent | undefined, length: number):
     if (remaining > 0) {
       const text = word.text.slice(remaining).trim()
       remaining = 0
-      if (text !== '') {
+      if (text) {
         words.push({ ...word, text })
       }
     } else {
       words.push(word)
     }
   }
-  const hasText = words.some((word) => word.text.trim() !== '')
+  const hasText = words.some((word) => !!word.text.trim())
   return hasText ? makeLineContentWords(words) : undefined
 }
 
@@ -116,7 +116,7 @@ const removePrefix = (content: runtime.LineContent | undefined, length: number):
  */
 export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOptions = {}): runtime.Lyric => {
   const bindings = prepareBindings(options.bindings, lyric.agents)
-  if (bindings?.size === 0 || lyric.lines.length === 0) {
+  if (bindings?.size === 0 || !lyric.lines.length) {
     return lyric
   }
 
@@ -124,12 +124,12 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
   const usedIds = new Set(lyric.agents.map((agent) => agent.id))
   const names = new Map<string, string | null>()
   for (const agent of lyric.agents) {
-    if (agent.id === '') {
+    if (!agent.id) {
       continue
     }
     for (const item of agent.names) {
       const name = item.text.trim()
-      if (name === '') {
+      if (!name) {
         continue
       }
       if (!names.has(name)) {
@@ -143,7 +143,7 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
   let agents = lyric.agents
   const resolveName = (name: string): readonly string[] => {
     const existing = names.get(name)
-    if (existing !== undefined && existing !== null) {
+    if (existing) {
       return [existing]
     }
     const base = hashName(name)
@@ -167,7 +167,7 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
   let contentChanged = false
   for (const [index, line] of originalLines.entries()) {
     const text = line.type === LineType.NORMAL ? getContentText(line.content) : ''
-    if (line.type !== LineType.NORMAL || text.trim() === '') {
+    if (line.type !== LineType.NORMAL || !text.trim()) {
       current = undefined
       lines?.push(line)
       continue
@@ -177,9 +177,9 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
     let matched = false
     if (colon !== -1) {
       const name = text.slice(0, colon).trim()
-      if (bindings !== undefined) {
+      if (bindings) {
         const target = bindings.get(name)
-        if (target === undefined) {
+        if (!target) {
           current = undefined
           lines?.push(line)
           continue
@@ -187,7 +187,7 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
         current = target
         matched = true
       } else if (!isClockTimeColon(text.slice(0, colon), text.slice(colon + 1))) {
-        if (name === '') {
+        if (!name) {
           current = undefined
           lines?.push(line)
           continue
@@ -201,13 +201,13 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
     if (matched && removePrefixes) {
       content = removePrefix(content, colon + 1)
       contentChanged = true
-      if (content === undefined) {
+      if (!content) {
         lines ??= originalLines.slice(0, index)
         continue
       }
     }
 
-    const nextAgents = current !== undefined && !haveSameAgents(line.agents, current) ? [...current] : line.agents
+    const nextAgents = current && !haveSameAgents(line.agents, current) ? [...current] : line.agents
     if (content !== line.content || nextAgents !== line.agents) {
       lines ??= originalLines.slice(0, index)
       lines.push({ ...line, content, agents: nextAgents })
@@ -216,7 +216,7 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
     }
   }
 
-  if (lines === undefined && agents === lyric.agents) {
+  if (!lines && agents === lyric.agents) {
     return lyric
   }
 

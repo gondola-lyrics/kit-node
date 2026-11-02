@@ -14,7 +14,7 @@ export interface DeriveWordEmphasisOptions {
 }
 
 const deriveContentEmphasis = (content: runtime.LineContent | undefined, durationThreshold: number): runtime.LineContent | undefined => {
-  if (content === undefined) {
+  if (!content) {
     return content
   }
 
@@ -24,16 +24,15 @@ const deriveContentEmphasis = (content: runtime.LineContent | undefined, duratio
     }
 
     const time = word.time
-    const emphasized =
-      time !== undefined && time.end !== undefined && validateTimeRange(time).length === 0 && time.end - time.start > durationThreshold
+    const emphasized = !!time && time.end !== undefined && !validateTimeRange(time).length && time.end - time.start > durationThreshold
 
     if (emphasized) {
-      if (word.emphasis?.value === true) {
+      if (word.emphasis?.value) {
         return word
       }
       return { ...word, emphasis: makeWordEmphasis({ value: true, derived: true }) }
     }
-    if (word.emphasis === undefined) {
+    if (!word.emphasis) {
       return word
     }
     return { ...word, emphasis: undefined }

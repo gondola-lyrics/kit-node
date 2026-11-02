@@ -13,7 +13,7 @@ import {
   makeWordAnnotationToken,
 } from '@gondola-lyrics/model/runtime'
 
-import { lowerBound, mapShared } from './array'
+import { lowerBound } from './array'
 import { lowerTag } from './language'
 
 export interface AnnotationSources {
@@ -50,7 +50,7 @@ export interface AnnotationMatchOptions {
    */
   matchByOrder?: boolean
   /**
-   * Keeps empty and // rows in timing queues without displaying their text.
+   * Keeps empty rows in timing queues so later annotations retain their slots.
    *
    * @default false
    */
@@ -71,21 +71,12 @@ export interface AnnotationAttachOptions extends AnnotationMatchOptions {
   wordTolerance?: number
 }
 
-interface WordRange {
-  start: number
-  end?: number
-}
-
-interface RomanPart {
-  word: runtime.Word
-  text: string
-  after: string
-}
-
 interface RomanTarget {
   word: runtime.Word
   index: number
-  time: WordRange
+  time: runtime.TimeRange
+  spaces: number
+  tokens: runtime.WordAnnotationToken[]
 }
 
 interface TimeBucket {
@@ -102,15 +93,16 @@ interface TimeIndex {
   ordered?: number[]
 }
 
-interface SourceIndex {
-  starts: (number | undefined)[]
-  precisions: number[]
-  roundings: (0 | 1)[]
-  indices: number[]
-  readable: number[]
+interface AnnotationSource {
+  line: runtime.Line
+  index: number
+  text: string
+  start?: number
+  precision: number
+  rounding: 0 | 1
 }
 
-type SourceGroups = Map<number, Map<number, number[]>>
+type SourceGroups = Map<number, Map<number, AnnotationSource[]>>
 
 const readText = (line: runtime.Line) => {
   return getContentText(line.content).trim()
@@ -119,18 +111,16 @@ const readText = (line: runtime.Line) => {
 /**
  * Combines explicit roman tracks with display-only word aggregations, preferring explicit entries for the same language.
  *
- * @param line A lead or background line whose annotations are being displayed or written.
- *
- * @returns Roman text for rendering; derived entries must not be stored back on the line.
+ * Derived entries must not be stored back on the line.
  */
 export const getLineRomans = (line: Pick<runtime.Line, 'content' | 'annotation'>): runtime.LineAnnotationRoman[] => {
   const explicit = line.annotation?.romans ?? []
   const languages = new Set(explicit.map((item) => lowerTag(item.language)))
   const derived = deriveLineRomans(line.content).filter((item) => !languages.has(lowerTag(item.language)))
-  return derived.length === 0 ? explicit : [...explicit, ...derived]
+  return derived.length ? [...explicit, ...derived] : explicit
 }
 
-const readWordRange = (word: runtime.Word): WordRange | undefined => {
+const readWordRange = (word: runtime.Word): runtime.TimeRange | undefined => {
   const time = word.time
   if (
     !time ||
@@ -140,10 +130,10 @@ const readWordRange = (word: runtime.Word): WordRange | undefined => {
   ) {
     return undefined
   }
-  return { start: time.start, end: time.end }
+  return time
 }
 
-const containsRomanTime = (source: WordRange, target: WordRange, tolerance: number): boolean => {
+const containsRomanTime = (source: runtime.TimeRange, target: runtime.TimeRange, tolerance: number): boolean => {
   const end = target.end ?? Number.POSITIVE_INFINITY
   if (source.start < target.start - tolerance || (source.end !== undefined && source.end > end + tolerance)) {
     return false
@@ -154,11 +144,33 @@ const containsRomanTime = (source: WordRange, target: WordRange, tolerance: numb
   return true
 }
 
+const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], tolerance: number): RomanTarget | undefined => {
+  let matched: RomanTarget | undefined
+  let priority = -1
+  for (const target of targets) {
+    if (!containsRomanTime(time, target.time, tolerance)) {
+      continue
+    }
+    // A known end is required to prefer an exact range over overlapping words.
+    const exact = time.end !== undefined && time.start === target.time.start && time.end === target.time.end
+    const point = time.start === time.end && target.time.start === target.time.end
+    const rank = exact ? 3 : point ? 2 : containsRomanTime(time, target.time, 0) ? 1 : 0
+    if (rank > priority) {
+      matched = target
+      priority = rank
+    } else if (rank === priority) {
+      // A later higher-priority candidate can still resolve this tie.
+      matched = undefined
+    }
+  }
+  return matched
+}
+
 const readRomanLanguage = (source: runtime.Line) => {
-  const languages = new Set(source.languages.map(lowerTag).filter((language) => language !== undefined))
+  const languages = new Set(source.languages.map(lowerTag).filter(Boolean))
   for (const word of source.content?.words ?? []) {
     const language = word.type === WordType.NORMAL ? lowerTag(word.language) : undefined
-    if (language !== undefined) {
+    if (language) {
       languages.add(language)
     }
   }
@@ -168,137 +180,107 @@ const readRomanLanguage = (source: runtime.Line) => {
   }
 }
 
-const attachWordRomans = (line: runtime.Line, source: runtime.Line, tolerance: number, language: string | undefined): runtime.Line | undefined => {
+const attachWordRomans = (
+  line: runtime.Line,
+  source: AnnotationSource,
+  tolerance: number,
+  language: string | undefined,
+): runtime.Line | undefined => {
   const content = line.content
-  const sourceContent = source.content
+  const sourceContent = source.line.content
   if (!content?.words.length || content.text !== undefined || !sourceContent?.words.length || sourceContent.text !== undefined) {
     return undefined
   }
 
   const targets: RomanTarget[] = []
-  const spaces = [0]
+  let spaces = 0
   for (const [index, word] of content.words.entries()) {
-    spaces.push(spaces[index]! + (word.type === WordType.SPACE ? 1 : 0))
     if (word.type === WordType.SPACE) {
+      spaces += 1
       continue
     }
     const time = readWordRange(word)
     if (word.type !== WordType.NORMAL || !time) {
       return undefined
     }
-    targets.push({ word, index, time })
+    targets.push({ word, index, time, spaces, tokens: [] })
   }
-  const parts: RomanPart[] = []
+
+  let previous: RomanTarget | undefined
+  let separator = ''
   for (const word of sourceContent.words) {
     if (word.type === WordType.SPACE) {
-      const previous = parts.at(-1)
-      if (previous !== undefined) {
-        previous.after += word.text
-      }
+      separator += word.text
       continue
     }
-    if (word.type !== WordType.NORMAL || word.text.trim() === '') {
+    const time = word.type === WordType.NORMAL ? readWordRange(word) : undefined
+    if (!time || !word.text.trim()) {
       return undefined
     }
-    parts.push({ word, text: word.text, after: '' })
-  }
-  if (parts.length === 0) {
-    return undefined
-  }
-  parts[0]!.text = parts[0]!.text.trimStart()
-  parts.at(-1)!.text = parts.at(-1)!.text.trimEnd()
-
-  const groups = new Map<runtime.Word, runtime.WordAnnotationToken[]>()
-  const assigned: { target: RomanTarget; token: runtime.WordAnnotationToken }[] = []
-  let previousTarget = -1
-  for (const part of parts) {
-    const time = readWordRange(part.word)
-    if (!time) {
+    const target = matchRomanTarget(time, targets, tolerance)
+    if (!target || target.index < (previous?.index ?? -1) || target.word.annotation?.romans.some((item) => lowerTag(item.language) === language)) {
       return undefined
     }
-    const candidates = targets.filter((target) => containsRomanTime(time, target.time, tolerance))
-    // An unknown source end cannot distinguish overlapping words.
-    const exact =
-      time.end === undefined
-        ? []
-        : candidates.filter((target) => {
-            return target.time.start === time.start && target.time.end === time.end
-          })
-    const points = time.start === time.end ? candidates.filter((target) => target.time.start === target.time.end) : []
-    const contained = candidates.filter((target) => containsRomanTime(time, target.time, 0))
-    const preferred = exact.length > 0 ? exact : points.length > 0 ? points : contained.length > 0 ? contained : candidates
-    if (preferred.length !== 1) {
-      return undefined
-    }
-    const target = preferred[0]!
-    if (target.index < previousTarget || target.word.annotation?.romans.some((item) => lowerTag(item.language) === language)) {
-      return undefined
-    }
-    previousTarget = target.index
     const bound = target.time.end ?? Number.POSITIVE_INFINITY
     const start = Math.min(bound, Math.max(target.time.start, time.start))
     // An open source tail can use its uniquely matched word's end without dividing time by text length.
     const end = time.end === undefined ? target.time.end : Math.min(bound, Math.max(target.time.start, time.end))
-    const token = makeWordAnnotationToken({ text: part.text, time: { start, end } })
-    const tokens = groups.get(target.word) ?? []
-    tokens.push(token)
-    groups.set(target.word, tokens)
-    assigned.push({ target, token })
+    const token = makeWordAnnotationToken({ text: previous ? word.text : word.text.trimStart(), time: { start, end } })
+    if (previous) {
+      const last = previous.tokens.at(-1)!
+      if (target.spaces > previous.spaces) {
+        const space = separator.indexOf(' ')
+        if (space === -1) {
+          return undefined
+        }
+        // The model supplies one space even across skipped words; retain the rest in the tokens.
+        last.text += separator.slice(0, space)
+        token.text = separator.slice(space + 1) + token.text
+      } else {
+        last.text += separator
+      }
+    }
+    target.tokens.push(token)
+    previous = target
+    separator = ''
   }
+  if (!previous) {
+    return undefined
+  }
+  const last = previous.tokens.at(-1)!
+  last.text = last.text.trimEnd()
 
-  for (let index = 0; index < assigned.length - 1; index += 1) {
-    const current = assigned[index]!
-    const next = assigned[index + 1]!
-    const separator = parts[index]!.after
-    const spaced = next.target.index > current.target.index && spaces[next.target.index]! > spaces[current.target.index + 1]!
-    if (!spaced) {
-      current.token.text += separator
+  const words = content.words.slice()
+  for (const { word, index, tokens } of targets) {
+    if (!tokens.length) {
       continue
     }
-    const space = separator.indexOf(' ')
-    if (space === -1) {
-      return undefined
-    }
-    // The model supplies one space between romanized words separated in the original text.
-    current.token.text += separator.slice(0, space)
-    next.token.text = separator.slice(space + 1) + next.token.text
-  }
-
-  const words = mapShared(content.words, (word) => {
-    const tokens = groups.get(word)
-    if (tokens === undefined) {
-      return word
-    }
     const roman = makeWordAnnotationRoman({ language, tokens })
-    return { ...word, annotation: makeWordAnnotation({ ...word.annotation, romans: [...(word.annotation?.romans ?? []), roman] }) }
-  })
+    words[index] = { ...word, annotation: makeWordAnnotation({ ...word.annotation, romans: [...(word.annotation?.romans ?? []), roman] }) }
+  }
   const result = { ...line, content: { ...content, words } }
   const derived = deriveLineRomans(result.content).find((item) => lowerTag(item.language) === language)
-  return derived?.text === readText(source) ? result : undefined
+  // Commit the whole track only when the model can reproduce its text, including separators.
+  return derived?.text === source.text ? result : undefined
 }
 
-const isReadable = (text: string, preservePlaceholders: boolean): boolean => {
-  return text !== '' && (!preservePlaceholders || text !== '//')
-}
-
-const createSourceIndex = (lines: runtime.Line[], options: AnnotationMatchOptions): SourceIndex => {
-  const result: SourceIndex = { starts: [], precisions: [], roundings: [], indices: [], readable: [] }
-  const preserve = options.preservePlaceholders === true
+const readSources = (lines: runtime.Line[], options: AnnotationMatchOptions): AnnotationSource[] => {
+  const result: AnnotationSource[] = []
+  const preserve = options.preservePlaceholders
   for (const [index, line] of lines.entries()) {
     const start = line.time?.start
     const text = readText(line)
     const timing = options.getTiming?.(line)
     const precision = timing?.precision
-    const readable = isReadable(text, preserve)
-    result.starts.push(start)
-    result.precisions.push(precision !== undefined && Number.isFinite(precision) && precision > 0 ? precision : 1)
-    result.roundings.push(timing?.rounding === 1 ? 1 : 0)
-    const timed = start !== undefined
-    if ((timed && (preserve || text !== '')) || (options.matchByOrder && readable)) {
-      result.indices.push(index)
-      if (readable) {
-        result.readable.push(index)
-      }
+    if ((start !== undefined && (preserve || text)) || (options.matchByOrder && text)) {
+      result.push({
+        line,
+        index,
+        text,
+        start,
+        precision: precision && Number.isFinite(precision) && precision > 0 ? precision : 1,
+        rounding: timing?.rounding === 1 ? 1 : 0,
+      })
     }
   }
   return result
@@ -312,7 +294,7 @@ const createTimeIndex = (lines: runtime.Line[], options: AnnotationMatchOptions)
     const start = line.time?.start
     const valid = start !== undefined && (!options.preservePlaceholders || Number.isFinite(start))
     starts.push(valid ? start : undefined)
-    if (options.matchByOrder && line.type === LineType.NORMAL && isReadable(readText(line), options.preservePlaceholders === true)) {
+    if (options.matchByOrder && line.type === LineType.NORMAL && readText(line)) {
       lyricRows.push(index)
     }
     if (!valid) {
@@ -327,7 +309,7 @@ const createTimeIndex = (lines: runtime.Line[], options: AnnotationMatchOptions)
 
 const getTimeBuckets = (index: TimeIndex, precision: number): Map<number, TimeBucket> => {
   const cached = index.buckets.get(precision)
-  if (cached !== undefined) {
+  if (cached) {
     return cached
   }
   const buckets = new Map<number, TimeBucket>()
@@ -337,7 +319,7 @@ const getTimeBuckets = (index: TimeIndex, precision: number): Map<number, TimeBu
     }
     const key = Math.floor(start / precision)
     let bucket = buckets.get(key)
-    if (bucket === undefined) {
+    if (!bucket) {
       bucket = { start, indices: [], mixed: false }
       buckets.set(key, bucket)
     }
@@ -348,20 +330,20 @@ const getTimeBuckets = (index: TimeIndex, precision: number): Map<number, TimeBu
   return buckets
 }
 
-const matchDuplicates = (start: number, count: number, index: TimeIndex, groups: SourceGroups, sources: SourceIndex): number[] | undefined => {
-  const result: number[] = []
+const matchDuplicates = (start: number, count: number, index: TimeIndex, groups: SourceGroups): AnnotationSource[] | undefined => {
+  const result: AnnotationSource[] = []
   const collect = (precision: number, key: number, roundingOnly: boolean): boolean => {
     const queue = groups.get(precision)?.get(key)
-    if (queue === undefined) {
+    if (!queue) {
       return true
     }
     const bucket = getTimeBuckets(index, precision).get(key)
-    if (bucket !== undefined && (bucket.mixed || bucket.start !== start)) {
-      return roundingOnly && queue.every((source) => sources.roundings[source] !== 1)
+    if (bucket && (bucket.mixed || bucket.start !== start)) {
+      return roundingOnly && queue.every((source) => source.rounding !== 1)
     }
     for (const source of queue) {
-      const sourceStart = sources.starts[source]!
-      const rounded = sources.roundings[source] === 1
+      const sourceStart = source.start!
+      const rounded = source.rounding === 1
       if (roundingOnly && !rounded) {
         continue
       }
@@ -391,15 +373,15 @@ const matchDuplicates = (start: number, count: number, index: TimeIndex, groups:
   return result
 }
 
-const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: AnnotationMatchOptions): Map<number, number> => {
-  const matched = new Map<number, number>()
-  if (sources.indices.length === 0) {
+const matchAnnotations = (index: TimeIndex, sources: AnnotationSource[], options: AnnotationMatchOptions): Map<number, AnnotationSource> => {
+  const matched = new Map<number, AnnotationSource>()
+  if (!sources.length) {
     return matched
   }
-  const preserve = options.preservePlaceholders === true
-  const byStart = new Map<number, number[]>()
-  for (const source of sources.indices) {
-    const start = sources.starts[source]
+  const preserve = options.preservePlaceholders
+  const byStart = new Map<number, AnnotationSource[]>()
+  for (const source of sources) {
+    const start = source.start
     if (start === undefined || (preserve && !Number.isFinite(start))) {
       continue
     }
@@ -407,18 +389,16 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
     queue.push(source)
     byStart.set(start, queue)
   }
-  const usedLines = new Set<number>()
-  const usedSources = new Set<number>()
-  const ambiguous = new Set<number>()
-  const assign = (target: number, source: number) => {
+  const usedSources = new Set<AnnotationSource>()
+  const ambiguous = new Set<AnnotationSource>()
+  const assign = (target: number, source: AnnotationSource) => {
     matched.set(target, source)
-    usedLines.add(target)
     usedSources.add(source)
   }
 
   for (const [start, queue] of index.targets) {
     const candidates = byStart.get(start)
-    if (candidates === undefined) {
+    if (!candidates) {
       continue
     }
     if (queue.length > 1) {
@@ -433,48 +413,43 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
     }
     let source = candidates[0]!
     for (const candidate of candidates) {
-      if (sources.precisions[candidate]! < sources.precisions[source]!) {
+      if (candidate.precision < source.precision) {
         source = candidate
       }
     }
     assign(queue[0]!, source)
   }
-  if (usedSources.size === sources.indices.length) {
+  if (usedSources.size === sources.length) {
     return matched
   }
 
-  if (options.matchByOrder && sources.readable.length > 0 && sources.readable.length === index.lyricRows.length) {
-    let compatible = true
+  const readable = options.matchByOrder ? sources.filter((source) => source.text) : []
+  if (readable.length && readable.length === index.lyricRows.length) {
     // Counts can agree after unrelated omissions, so row order must preserve exact matches.
-    for (const [position, target] of index.lyricRows.entries()) {
-      const source = sources.readable[position]!
-      const previous = matched.get(target)
-      if ((usedLines.has(target) && previous !== source) || (usedSources.has(source) && previous !== source)) {
-        compatible = false
-        break
-      }
-    }
+    const compatible = readable.every((source, position) => {
+      const target = index.lyricRows[position]!
+      return (!matched.has(target) && !usedSources.has(source)) || matched.get(target) === source
+    })
     if (compatible) {
-      for (const [position, target] of index.lyricRows.entries()) {
-        const source = sources.readable[position]!
+      for (const [position, source] of readable.entries()) {
         if (!usedSources.has(source)) {
-          assign(target, source)
+          assign(index.lyricRows[position]!, source)
         }
       }
       return matched
     }
   }
 
-  if (preserve || options.getTiming !== undefined) {
+  if (preserve || options.getTiming) {
     const groups: SourceGroups = new Map()
-    for (const source of sources.indices) {
-      const start = sources.starts[source]
+    for (const source of sources) {
+      const start = source.start
       if (usedSources.has(source) || start === undefined || !Number.isFinite(start)) {
         continue
       }
-      const precision = sources.precisions[source]!
+      const precision = source.precision
       let group = groups.get(precision)
-      if (group === undefined) {
+      if (!group) {
         group = new Map()
         groups.set(precision, group)
       }
@@ -485,14 +460,14 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
     }
 
     for (const [start, queue] of index.targets) {
-      if (queue.length < 2 || usedLines.has(queue[0]!)) {
+      if (queue.length < 2 || matched.has(queue[0]!)) {
         continue
       }
-      const candidates = matchDuplicates(start, queue.length, index, groups, sources)
-      if (candidates === undefined || candidates.length !== queue.length) {
+      const candidates = matchDuplicates(start, queue.length, index, groups)
+      if (!candidates || candidates.length !== queue.length) {
         continue
       }
-      candidates.sort((first, second) => first - second)
+      candidates.sort((first, second) => first.index - second.index)
       for (const [position, source] of candidates.entries()) {
         assign(queue[position]!, source)
       }
@@ -502,12 +477,12 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
       const candidates = getTimeBuckets(index, precision)
       for (const [key, entries] of groups.get(precision)!) {
         const bucket = candidates.get(key)
-        if (bucket === undefined) {
+        if (!bucket) {
           continue
         }
         const sourceQueue = entries.filter((source) => !usedSources.has(source))
-        const targetQueue = bucket.indices.filter((target) => !usedLines.has(target))
-        if (sourceQueue.length === 0 || targetQueue.length === 0) {
+        const targetQueue = bucket.indices.filter((target) => !matched.has(target))
+        if (!sourceQueue.length || !targetQueue.length) {
           continue
         }
         // Incomplete precision buckets cannot reveal which row is missing.
@@ -524,18 +499,18 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
       }
     }
 
-    const rounding = new Map<number, number>()
+    const rounding = new Map<AnnotationSource, number>()
     const claims = new Map<number, number>()
-    for (const source of sources.indices) {
-      const start = sources.starts[source]
-      if (sources.roundings[source] !== 1 || usedSources.has(source) || ambiguous.has(source) || start === undefined || !Number.isFinite(start)) {
+    for (const source of sources) {
+      const start = source.start
+      if (source.rounding !== 1 || usedSources.has(source) || ambiguous.has(source) || start === undefined || !Number.isFinite(start)) {
         continue
       }
       let target = -1
       let count = 0
       for (const neighbor of [start - 1, start + 1]) {
         for (const candidate of index.targets.get(neighbor) ?? []) {
-          if (usedLines.has(candidate)) {
+          if (matched.has(candidate)) {
             continue
           }
           target = candidate
@@ -559,14 +534,14 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
     }
   }
 
-  const tolerance = Number.isFinite(options.tolerance) ? Math.max(0, options.tolerance ?? 0) : 0
-  if (tolerance === 0) {
+  const tolerance = options.tolerance ?? 0
+  if (!Number.isFinite(tolerance) || tolerance <= 0) {
     return matched
   }
   const ordered = (index.ordered ??= [...index.targets.keys()].filter(Number.isFinite).sort((first, second) => first - second))
   const cursors = new Map<number, number>()
-  for (const source of sources.indices) {
-    const start = sources.starts[source]
+  for (const source of sources) {
+    const start = source.start
     if (usedSources.has(source) || ambiguous.has(source) || start === undefined || !Number.isFinite(start)) {
       continue
     }
@@ -581,7 +556,7 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
       }
       const queue = index.targets.get(targetStart)!
       let cursor = cursors.get(targetStart) ?? 0
-      while (cursor < queue.length && usedLines.has(queue[cursor]!)) {
+      while (cursor < queue.length && matched.has(queue[cursor]!)) {
         cursor += 1
       }
       cursors.set(targetStart, cursor)
@@ -598,66 +573,37 @@ const matchAnnotations = (index: TimeIndex, sources: SourceIndex, options: Annot
   return matched
 }
 
-/**
- * Matches annotation tracks against one shared time index while keeping each track's assignments independent.
- *
- * @param lines Original rows in input order.
- * @param sources Translation and romanization rows, including any preserved timing placeholders.
- * @param options Matching rules and source timestamp information.
- *
- * @returns Source row indices keyed by original row index for each track.
- */
-const matchAnnotationTracks = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions = {}) => {
-  const translations = createSourceIndex(sources.translations ?? [], options)
-  const romans = createSourceIndex(sources.romans ?? [], options)
-  const index = createTimeIndex(lines, options)
-  return { translations: matchAnnotations(index, translations, options), romans: matchAnnotations(index, romans, options) }
-}
-
 const attachTracks = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions, wordTolerance?: number): runtime.Line[] => {
-  if (lines.length === 0 || ((sources.translations?.length ?? 0) === 0 && (sources.romans?.length ?? 0) === 0)) {
+  if (!lines.length || (!sources.translations?.length && !sources.romans?.length)) {
     return lines
   }
-  const { translations, romans } = matchAnnotationTracks(lines, sources, options)
-  if (translations.size === 0 && romans.size === 0) {
-    return lines
-  }
+  const index = createTimeIndex(lines, options)
   let result = lines
-  for (const [index, line] of lines.entries()) {
-    const translationIndex = translations.get(index)
-    const romanIndex = romans.get(index)
-    const translation = translationIndex === undefined ? undefined : sources.translations![translationIndex]
-    const roman = romanIndex === undefined ? undefined : sources.romans![romanIndex]
-    const translationText = translation === undefined ? '' : readText(translation)
-    const romanText = roman === undefined ? '' : readText(roman)
-    const hasTranslation = translationText !== '' && (!options.preservePlaceholders || translationText !== '//')
-    const hasRoman = romanText !== '' && (!options.preservePlaceholders || romanText !== '//')
-    if (line.type === LineType.INSTRUMENTAL || (!hasTranslation && !hasRoman)) {
-      continue
-    }
-    const romanLanguage = hasRoman && wordTolerance !== undefined ? readRomanLanguage(roman!) : undefined
-    const words =
-      romanLanguage?.consistent && wordTolerance !== undefined ? attachWordRomans(line, roman!, wordTolerance, romanLanguage.language) : undefined
-    let annotated = words ?? line
-    if (hasTranslation || (hasRoman && words === undefined)) {
-      const annotation = makeLineAnnotation({
-        translations: [...(annotated.annotation?.translations ?? [])],
-        romans: [...(annotated.annotation?.romans ?? [])],
-      })
-      if (hasTranslation) {
-        annotation.translations.push(makeLineAnnotationTranslation({ text: translationText, language: translation!.languages[0] }))
+  // Tracks share timing lookups, but each owns its assignments so both can annotate the same row.
+  for (const kind of ['translations', 'romans'] as const) {
+    const matches = matchAnnotations(index, readSources(sources[kind] ?? [], options), options)
+    for (const [target, source] of matches) {
+      const line = result[target]!
+      if (line.type === LineType.INSTRUMENTAL || !source.text) {
+        continue
       }
-      if (hasRoman && words === undefined) {
-        annotation.romans.push(
-          makeLineAnnotationRoman({ text: romanText, language: romanLanguage === undefined ? roman!.languages[0] : romanLanguage.language }),
-        )
+      const romanLanguage = kind === 'romans' && wordTolerance !== undefined ? readRomanLanguage(source.line) : undefined
+      let annotated =
+        romanLanguage?.consistent && wordTolerance !== undefined ? attachWordRomans(line, source, wordTolerance, romanLanguage.language) : undefined
+      if (!annotated) {
+        const language = romanLanguage ? romanLanguage.language : source.line.languages[0]
+        const create = kind === 'romans' ? makeLineAnnotationRoman : makeLineAnnotationTranslation
+        const annotation = makeLineAnnotation({
+          ...line.annotation,
+          [kind]: [...(line.annotation?.[kind] ?? []), create({ text: source.text, language })],
+        })
+        annotated = { ...line, annotation }
       }
-      annotated = { ...annotated, annotation }
+      if (result === lines) {
+        result = lines.slice()
+      }
+      result[target] = annotated
     }
-    if (result === lines) {
-      result = lines.slice()
-    }
-    result[index] = annotated
   }
   return result
 }
@@ -665,11 +611,7 @@ const attachTracks = (lines: runtime.Line[], sources: AnnotationSources, options
 /**
  * Attaches matched tracks as line annotations while preserving existing annotations and unchanged row identities.
  *
- * @param lines Original rows, including timing slots that cannot carry annotations.
- * @param sources Translation and romanization rows as model lines.
- * @param options Matching rules; defaults use exact time and optional extra tolerance.
- *
- * @returns Annotated rows, reusing the original array when no visible annotation changes.
+ * Reuses the original array when no visible annotations change.
  */
 export const attachLineAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions = {}): runtime.Line[] => {
   return attachTracks(lines, sources, options)
@@ -679,11 +621,7 @@ export const attachLineAnnotations = (lines: runtime.Line[], sources: Annotation
  * Attaches complete timed roman tracks to words and retains the source line annotation when word matching is incomplete.
  * Translations remain line-level, and successful word tracks are not duplicated on the line.
  *
- * @param lines Original rows before final normalization.
- * @param sources Translation and romanization rows as model lines.
- * @param options Independent line matching and word boundary tolerances.
- *
- * @returns Annotated rows with original text and word timing preserved.
+ * Match before final normalization; original text and word timing are preserved.
  */
 export const attachAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationAttachOptions = {}): runtime.Line[] => {
   const tolerance = Number.isFinite(options.wordTolerance) ? Math.max(0, options.wordTolerance ?? 0) : 0

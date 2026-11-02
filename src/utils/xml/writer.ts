@@ -81,7 +81,7 @@ const escapeXmlText = (text: string, chunks: string[]): void => {
       escaped = REPLACEMENT_CHARACTER
     }
 
-    if (escaped === '') {
+    if (!escaped) {
       continue
     }
 
@@ -140,7 +140,7 @@ const escapeXmlAttribute = (value: string, chunks: string[]): void => {
       escaped = REPLACEMENT_CHARACTER
     }
 
-    if (escaped === '') {
+    if (!escaped) {
       continue
     }
 
@@ -170,7 +170,7 @@ const hasOnlyElements = (element: XmlElement): boolean => {
 
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index]
-    if (child !== undefined && child.nodeType !== XmlNodeType.element) {
+    if (child && child.nodeType !== XmlNodeType.element) {
       return false
     }
   }
@@ -200,7 +200,7 @@ const writeXmlNode = (node: XmlNode, chunks: string[], depth: number, indent: st
   chunks.push('<', node.qualifiedName)
   for (let index = 0; index < node.attributes.length; index += 1) {
     const attribute = node.attributes[index]
-    if (attribute === undefined) {
+    if (!attribute) {
       continue
     }
     chunks.push(' ', attribute.qualifiedName, '="')
@@ -209,7 +209,7 @@ const writeXmlNode = (node: XmlNode, chunks: string[], depth: number, indent: st
   }
 
   const children = node.children
-  if (children.length === 0) {
+  if (!children.length) {
     chunks.push('/>')
     return
   }
@@ -219,7 +219,7 @@ const writeXmlNode = (node: XmlNode, chunks: string[], depth: number, indent: st
   const childIndent = indent !== undefined && hasOnlyElements(node) ? indent : undefined
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index]
-    if (child !== undefined) {
+    if (child) {
       writeXmlNode(child, chunks, depth + 1, childIndent)
     }
   }
@@ -242,7 +242,7 @@ export const serializeXml = (root: XmlElement, options: XmlWriteOptions = {}): s
     chunks.push(XML_DECLARATION)
   }
 
-  const indent = options.indent === true ? (options.indentText ?? DEFAULT_INDENT) : undefined
+  const indent = options.indent ? (options.indentText ?? DEFAULT_INDENT) : undefined
   if (indent !== undefined) {
     chunks.push('\n')
   }
@@ -250,7 +250,7 @@ export const serializeXml = (root: XmlElement, options: XmlWriteOptions = {}): s
   if (root.qualifiedName === ROOT_NAME) {
     for (let index = 0; index < root.children.length; index += 1) {
       const child = root.children[index]
-      if (child !== undefined) {
+      if (child) {
         writeXmlNode(child, chunks, 0, indent)
       }
     }

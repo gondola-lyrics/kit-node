@@ -87,7 +87,7 @@ const parseLrcText = (text: string): runtime.Lyric => {
   const { lines, metaTags } = readLrc(text)
   const meta = readMetaTags(metaTags)
 
-  if (lines.length === 0) {
+  if (!lines.length) {
     return makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta })
   }
 
@@ -119,9 +119,9 @@ export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions
     return finalizeLyric(lyric)
   }
 
-  const translations = source.translations === undefined ? [] : readLrc(source.translations).lines
-  const romans = source.romans === undefined ? [] : readLrc(source.romans).lines
-  if (translations.length === 0 && romans.length === 0) {
+  const translations = source.translations ? readLrc(source.translations).lines : []
+  const romans = source.romans ? readLrc(source.romans).lines : []
+  if (!translations.length && !romans.length) {
     return finalizeLyric(lyric)
   }
 

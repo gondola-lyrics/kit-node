@@ -56,7 +56,7 @@ const haveSameRoles = (first: readonly CreditRole[], second: readonly CreditRole
 const findCoveringRoles = (label: string, key: string): readonly CreditRole[] | undefined => {
   // Cuts come from the source label because the key no longer carries its whitespace.
   const cuts = findRuleMatchCuts(label)
-  if (cuts === undefined) {
+  if (!cuts) {
     return undefined
   }
 
@@ -78,7 +78,7 @@ const findCoveringRoles = (label: string, key: string): readonly CreditRole[] | 
     }
     for (let to = last; to > from; to -= 1) {
       const matched = creditRules.get(key.slice(cuts[from]!, cuts[to]!))
-      if (matched === undefined || (roles !== undefined && !haveSameRoles(roles, matched))) {
+      if (!matched || (roles && !haveSameRoles(roles, matched))) {
         continue
       }
       if (!search(to, count + 1, roles ?? matched)) {

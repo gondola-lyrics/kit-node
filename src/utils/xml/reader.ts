@@ -1,6 +1,6 @@
 import type { XmlAttribute, XmlElement } from './utils'
 
-import { applyXmlNameParts, createXmlAttribute, XmlNodeType } from './utils'
+import { XmlNodeType, applyXmlNameParts, createXmlAttribute } from './utils'
 
 const LESS_THAN = 0x3c
 const GREATER_THAN = 0x3e
@@ -84,7 +84,7 @@ const decodeText = (text: string): string => {
     start = cursor
   }
 
-  if (parts.length === 0) {
+  if (!parts.length) {
     return text
   }
 
@@ -97,7 +97,7 @@ const decodeText = (text: string): string => {
  */
 export const parseXml = (source: string): XmlElement | null => {
   const length = source.length
-  let position = length > 0 && source.charCodeAt(0) === BYTE_ORDER_MARK ? 1 : 0
+  let position = length && source.charCodeAt(0) === BYTE_ORDER_MARK ? 1 : 0
   let valid = true
   const stack: XmlElement[] = []
 
@@ -122,7 +122,7 @@ export const parseXml = (source: string): XmlElement | null => {
     }
 
     const parent = stack[stack.length - 1]
-    if (parent === undefined) {
+    if (!parent) {
       valid = false
       return
     }
@@ -273,7 +273,7 @@ export const parseXml = (source: string): XmlElement | null => {
     position = cursor
 
     const parent = stack[stack.length - 1]
-    if (parent === undefined) {
+    if (!parent) {
       valid = false
       return
     }
@@ -315,7 +315,7 @@ export const parseXml = (source: string): XmlElement | null => {
     }
 
     const top = stack[stack.length - 1]
-    if (top === undefined || top.qualifiedName !== name) {
+    if (!top || top.qualifiedName !== name) {
       valid = false
       return
     }
@@ -346,7 +346,7 @@ export const parseXml = (source: string): XmlElement | null => {
       }
 
       const parent = stack[stack.length - 1]
-      if (parent === undefined) {
+      if (!parent) {
         valid = false
         return
       }

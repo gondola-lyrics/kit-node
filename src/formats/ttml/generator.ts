@@ -170,7 +170,7 @@ const renderTime = (time: number, offset: number) => {
  * Writes known bounds without inventing an end.
  */
 const renderTimeAttributes = (time: runtime.TimeRange | undefined, offset: number): Attributes => {
-  if (time === undefined) {
+  if (!time) {
     throw new Error('TTML sung lines, words, and ruby tokens require a time range')
   }
 
@@ -206,7 +206,7 @@ const renderWord = (word: runtime.Word, context: RenderContext, language?: strin
 
   const attributes = [...renderTimeAttributes(word.time, context.offset), ...renderLanguage(word.language, language)]
   const ruby = context.profile === 'amll' ? word.annotation?.rubies[0] : undefined
-  if (ruby === undefined) {
+  if (!ruby) {
     return createXmlElement('span', attributes, [createXmlText(word.text)])
   }
 
@@ -241,7 +241,7 @@ const renderWord = (word: runtime.Word, context: RenderContext, language?: strin
  */
 const renderContent = (line: SungLine, context: RenderContext): XmlNode[] => {
   const content = line.content
-  if (content === undefined) {
+  if (!content) {
     throw new Error('TTML sung lines require content')
   }
   if (content.text !== undefined) {
@@ -280,7 +280,7 @@ const renderLineAttributes = (line: SungLine, context: RenderContext): Attribute
   const lead = line.agents[0]
   if (lead !== undefined) {
     const id = context.agents.get(lead)
-    if (id === undefined) {
+    if (!id) {
       throw new Error('TTML performing agents must have a declaration')
     }
     attributes.push(['ttm:agent', id])
@@ -309,7 +309,7 @@ const renderLine = (line: runtime.Line, context: RenderContext) => {
   const after: XmlNode[] = []
   for (const background of line.backgrounds) {
     const node = renderBackground(background, context)
-    if (background.time !== undefined && line.time !== undefined && background.time.start < line.time.start) {
+    if (background.time && line.time && background.time.start < line.time.start) {
       before.push(node)
     } else {
       after.push(node)
@@ -383,11 +383,11 @@ const renderSongwriters = (meta: runtime.Meta): XmlElement[] => {
       names.push(createXmlElement('songwriter', renderLanguage(name.language), [createXmlText(name.text)]))
     }
   }
-  return names.length === 0 ? [] : [createXmlElement('songwriters', [], names)]
+  return names.length ? [createXmlElement('songwriters', [], names)] : []
 }
 
 const renderAnnotationTracks = (tracks: AnnotationTracks, kind: AnnotationKind, context: RenderContext): XmlElement[] => {
-  if (tracks.size === 0) {
+  if (!tracks.size) {
     return []
   }
 
@@ -422,18 +422,18 @@ const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): X
       for (const item of annotation[kind]) {
         const language = item.language?.toLowerCase()
         let track = tracks[kind].get(language)
-        if (track === undefined) {
+        if (!track) {
           track = new Map()
           tracks[kind].set(language, track)
         }
         let nodes = track.get(line)
-        if (nodes === undefined) {
+        if (!nodes) {
           nodes = []
           track.set(line, nodes)
         }
 
         nodes.push(
-          background === undefined
+          !background
             ? createXmlText(item.text)
             : createXmlElement(
                 'span',
@@ -463,7 +463,7 @@ const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): X
 const renderMetadata = (lyric: runtime.Lyric, lines: runtime.Line[], context: RenderContext, includeMeta: boolean): XmlElement => {
   const metadata = renderAgents(lyric, context)
   const itunes: XmlElement[] = []
-  if (includeMeta && lyric.meta !== undefined) {
+  if (includeMeta && lyric.meta) {
     if (context.profile === 'amll') {
       metadata.push(...renderAmllMeta(lyric.meta))
     }
@@ -472,7 +472,7 @@ const renderMetadata = (lyric: runtime.Lyric, lines: runtime.Line[], context: Re
   if (context.profile === 'itunes') {
     itunes.push(...renderHeadAnnotations(lines, context))
   }
-  if (itunes.length > 0) {
+  if (itunes.length) {
     metadata.push(createXmlElement('iTunesMetadata', [['xmlns', NAMESPACE_ITUNES_METADATA]], itunes))
   }
 

@@ -6,11 +6,14 @@ export interface LrcContent {
   romans?: string
 }
 
+/**
+ * Accepts plain lyrics or separate tracks while rejecting an unreadable original payload.
+ */
 export const readLrcContent = (input: unknown): LrcContent | null => {
   if (typeof input === 'string') {
     return { original: input }
   }
-  if (typeof input !== 'object' || input === null) {
+  if (!input || typeof input !== 'object') {
     return null
   }
 

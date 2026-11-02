@@ -57,13 +57,13 @@ const prefixedNames = new Map<string, { namespacePrefix: string; localName: stri
  */
 const splitXmlName = (name: string) => {
   const cached = prefixedNames.get(name)
-  if (cached !== undefined) {
+  if (cached) {
     return cached
   }
 
   const colon = name.indexOf(':')
   const split = colon === -1 ? { namespacePrefix: '', localName: name } : { namespacePrefix: name.slice(0, colon), localName: name.slice(colon + 1) }
-  if (split.namespacePrefix !== '' && prefixedNames.size < 1024) {
+  if (split.namespacePrefix && prefixedNames.size < 1024) {
     prefixedNames.set(name, split)
   }
 
@@ -139,7 +139,7 @@ export const getXmlAttribute = (element: XmlElement, localName: string): string 
   const attributes = element.attributes
   for (let index = 0; index < attributes.length; index += 1) {
     const attribute = attributes[index]
-    if (attribute !== undefined && attribute.localName === localName) {
+    if (attribute && attribute.localName === localName) {
       return attribute.value
     }
   }
@@ -154,7 +154,7 @@ export const getXmlQualifiedAttribute = (element: XmlElement, qualifiedName: str
   const attributes = element.attributes
   for (let index = 0; index < attributes.length; index += 1) {
     const attribute = attributes[index]
-    if (attribute !== undefined && attribute.qualifiedName === qualifiedName) {
+    if (attribute && attribute.qualifiedName === qualifiedName) {
       return attribute.value
     }
   }
@@ -171,7 +171,7 @@ export const getXmlChildElements = (element: XmlElement, localName: string): Xml
 
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index]
-    if (child !== undefined && child.nodeType === XmlNodeType.element && child.localName === localName) {
+    if (child && child.nodeType === XmlNodeType.element && child.localName === localName) {
       result.push(child)
     }
   }
@@ -187,7 +187,7 @@ export const hasXmlChildElement = (element: XmlElement, localName: string): bool
 
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index]
-    if (child !== undefined && child.nodeType === XmlNodeType.element && child.localName === localName) {
+    if (child && child.nodeType === XmlNodeType.element && child.localName === localName) {
       return true
     }
   }
@@ -201,9 +201,9 @@ export const hasXmlChildElement = (element: XmlElement, localName: string): bool
 export const findXmlElement = (element: XmlElement, localName: string): XmlElement | undefined => {
   const stack: XmlNode[] = [element]
 
-  while (stack.length > 0) {
+  while (stack.length) {
     const node = stack.pop()
-    if (node === undefined || node.nodeType !== XmlNodeType.element) {
+    if (!node || node.nodeType !== XmlNodeType.element) {
       continue
     }
     if (node.localName === localName) {
@@ -212,7 +212,7 @@ export const findXmlElement = (element: XmlElement, localName: string): XmlEleme
     // Pushing in reverse makes the stack pop children in document order.
     for (let index = node.children.length - 1; index >= 0; index -= 1) {
       const child = node.children[index]
-      if (child !== undefined) {
+      if (child) {
         stack.push(child)
       }
     }
@@ -228,9 +228,9 @@ export const findXmlElements = (element: XmlElement, localName: string): XmlElem
   const result: XmlElement[] = []
   const stack: XmlNode[] = [element]
 
-  while (stack.length > 0) {
+  while (stack.length) {
     const node = stack.pop()
-    if (node === undefined || node.nodeType !== XmlNodeType.element) {
+    if (!node || node.nodeType !== XmlNodeType.element) {
       continue
     }
     if (node.localName === localName) {
@@ -238,7 +238,7 @@ export const findXmlElements = (element: XmlElement, localName: string): XmlElem
     }
     for (let index = node.children.length - 1; index >= 0; index -= 1) {
       const child = node.children[index]
-      if (child !== undefined) {
+      if (child) {
         stack.push(child)
       }
     }
@@ -255,15 +255,15 @@ export const groupXmlElements = (element: XmlElement, localNames: readonly strin
   const result = new Map<string, XmlElement[]>()
   const stack: XmlNode[] = [element]
 
-  while (stack.length > 0) {
+  while (stack.length) {
     const node = stack.pop()
-    if (node === undefined || node.nodeType !== XmlNodeType.element) {
+    if (!node || node.nodeType !== XmlNodeType.element) {
       continue
     }
 
     if (wanted.has(node.localName)) {
       const group = result.get(node.localName)
-      if (group === undefined) {
+      if (!group) {
         result.set(node.localName, [node])
       } else {
         group.push(node)
@@ -272,7 +272,7 @@ export const groupXmlElements = (element: XmlElement, localNames: readonly strin
 
     for (let index = node.children.length - 1; index >= 0; index -= 1) {
       const child = node.children[index]
-      if (child !== undefined) {
+      if (child) {
         stack.push(child)
       }
     }
@@ -289,26 +289,26 @@ export const getXmlTextContent = (node: XmlNode): string => {
     return node.text
   }
 
-  if (node.children.length === 0) {
+  if (!node.children.length) {
     return ''
   }
   const child = node.children[0]
-  if (node.children.length === 1 && child !== undefined && child.nodeType !== XmlNodeType.element) {
+  if (node.children.length === 1 && child && child.nodeType !== XmlNodeType.element) {
     return child.text
   }
 
   const parts: string[] = []
   const stack: XmlNode[] = [node]
 
-  while (stack.length > 0) {
+  while (stack.length) {
     const current = stack.pop()
-    if (current === undefined) {
+    if (!current) {
       continue
     }
     if (current.nodeType === XmlNodeType.element) {
       for (let index = current.children.length - 1; index >= 0; index -= 1) {
         const child = current.children[index]
-        if (child !== undefined) {
+        if (child) {
           stack.push(child)
         }
       }

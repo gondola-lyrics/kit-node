@@ -48,12 +48,12 @@ const createCreditIndex = (credits: readonly runtime.MetaCredit[]): CreditIndex 
   for (let index = 0; index < credits.length; index += 1) {
     const credit = credits[index]!
     let entries = creditIndex.get(credit.raw)
-    if (entries === undefined) {
+    if (!entries) {
       entries = new Map()
       creditIndex.set(credit.raw, entries)
     }
     let entry = entries.get(credit.role)
-    if (entry === undefined) {
+    if (!entry) {
       entry = { index, names: new Set() }
       entries.set(credit.role, entry)
     }
@@ -65,7 +65,7 @@ const createCreditIndex = (credits: readonly runtime.MetaCredit[]): CreditIndex 
 }
 
 const prepareCreditSeparators = (selected: readonly string[] | undefined): readonly string[] => {
-  if (selected === undefined || selected === DEFAULT_CREDIT_NAME_SEPARATORS) {
+  if (!selected || selected === DEFAULT_CREDIT_NAME_SEPARATORS) {
     return DEFAULT_CREDIT_NAME_SEPARATORS
   }
 
@@ -76,7 +76,7 @@ const prepareCreditSeparators = (selected: readonly string[] | undefined): reado
     return DEFAULT_CREDIT_NAME_SEPARATORS
   }
 
-  const separators = [...new Set(selected)].filter((separator) => separator !== '').sort((first, second) => second.length - first.length)
+  const separators = [...new Set(selected)].filter(Boolean).sort((first, second) => second.length - first.length)
   return separators
 }
 
@@ -84,7 +84,7 @@ const readCreditNames = (text: string, separators: readonly string[]): string[] 
   const hasSeparator = separators.some((separator) => text.includes(separator))
   if (!hasSeparator) {
     const name = trimRuleWhitespace(text)
-    return name === '' ? [] : [name]
+    return name ? [name] : []
   }
 
   let names = [text]
@@ -98,7 +98,7 @@ const readCreditNames = (text: string, separators: readonly string[]): string[] 
   const unique = new Set<string>()
   for (const name of names) {
     const trimmed = trimRuleWhitespace(name)
-    if (trimmed !== '') {
+    if (trimmed) {
       unique.add(trimmed)
     }
   }
@@ -106,7 +106,7 @@ const readCreditNames = (text: string, separators: readonly string[]): string[] 
 }
 
 const canRemoveSourceLine = (line: runtime.Line): boolean => {
-  if (line.backgrounds.length > 0 || line.annotation !== undefined) {
+  if (line.backgrounds.length || line.annotation) {
     return false
   }
 
@@ -116,7 +116,7 @@ const canRemoveSourceLine = (line: runtime.Line): boolean => {
     if (!annotation) {
       return false
     }
-    return annotation.translations.length > 0 || annotation.romans.length > 0
+    return !!(annotation.translations.length || annotation.romans.length)
   })
 }
 
@@ -161,29 +161,29 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
     }
     const raw = trimRuleWhitespace(text.slice(0, colon))
     const roles = matchCreditLabel(raw)
-    const names = roles === undefined ? [] : readCreditNames(text.slice(colon + 1), separators)
-    if (roles === undefined || names.length === 0) {
+    const names = roles ? readCreditNames(text.slice(colon + 1), separators) : []
+    if (!roles || !names.length) {
       remainingLines?.push(line)
       continue
     }
 
     creditIndex ??= createCreditIndex(originalCredits)
     let entries = creditIndex.get(raw)
-    if (entries === undefined) {
+    if (!entries) {
       entries = new Map()
       creditIndex.set(raw, entries)
     }
     for (const role of roles) {
       let entry = entries.get(role)
       const additions = names.filter((name) => !entry?.names.has(name))
-      if (additions.length === 0) {
+      if (!additions.length) {
         continue
       }
       if (credits === originalCredits) {
         credits = [...originalCredits]
       }
       const nameNodes = additions.map((name) => makeText({ text: name }))
-      if (entry === undefined) {
+      if (!entry) {
         entry = { index: credits.length, names: new Set() }
         entries.set(role, entry)
         credits.push(makeMetaCredit({ role, raw, names: nameNodes }))
@@ -196,18 +196,18 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
       }
     }
 
-    if (options.removeSourceLines === true && canRemoveSourceLine(line)) {
+    if (options.removeSourceLines && canRemoveSourceLine(line)) {
       remainingLines ??= originalLines.slice(0, index)
     } else {
       remainingLines?.push(line)
     }
   }
 
-  if (credits === originalCredits && remainingLines === undefined) {
+  if (credits === originalCredits && !remainingLines) {
     return lyric
   }
 
-  const removed = remainingLines !== undefined
+  const removed = !!remainingLines
   const lines = remainingLines ?? originalLines
 
   let timing = lyric.timing
@@ -220,6 +220,6 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
     }
   }
 
-  const meta = credits === originalCredits ? lyric.meta : lyric.meta === undefined ? makeMeta({ credits }) : { ...lyric.meta, credits }
+  const meta = credits === originalCredits ? lyric.meta : lyric.meta ? { ...lyric.meta, credits } : makeMeta({ credits })
   return { ...lyric, meta, lines, timing, languages: removed ? deriveLanguageUsages(lines) : lyric.languages }
 }

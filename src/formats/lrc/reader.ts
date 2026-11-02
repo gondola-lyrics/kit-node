@@ -49,7 +49,7 @@ const CLOCK_PATTERN = /^(?:\d+:){0,2}\d+(?:\.(\d+))?$/
 
 const readLineTiming = (tag: string): LrcLineTiming => {
   const clock = CLOCK_PATTERN.exec(tag.trim())
-  return { precision: clock === null ? 1 : 10 ** Math.max(0, 3 - (clock[1]?.length ?? 0)) }
+  return { precision: clock ? 10 ** Math.max(0, 3 - (clock[1]?.length ?? 0)) : 1 }
 }
 
 const readMeta = (body: string) => {
@@ -140,10 +140,10 @@ const readWords = (pieces: WordPiece[], lineStart: number) => {
   let cursor: number | undefined = lineStart
 
   for (const piece of pieces) {
-    const time = piece.tag === undefined ? undefined : parseWordTime(piece.tag, lineStart)
+    const time = piece.tag ? parseWordTime(piece.tag, lineStart) : undefined
 
     // A tag, even without following text, closes the segment it opens.
-    if (time?.start !== undefined) {
+    if (time) {
       closeSegment(time.start)
       segmentStart = time.start
       cursor = time.start
@@ -168,7 +168,7 @@ const readWords = (pieces: WordPiece[], lineStart: number) => {
         continue
       }
 
-      const tagged = !applied && time?.start !== undefined
+      const tagged = !applied && !!time
       applied = true
 
       const start = tagged ? segmentStart : cursor
@@ -194,12 +194,12 @@ const readWords = (pieces: WordPiece[], lineStart: number) => {
 const readLine = (text: string, start: number, nextStart: number | undefined) => {
   const trimmed = text.trim()
   let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
-  if (trimmed === '') {
+  if (!trimmed) {
     return makeLineInstrumental({ time: makeTimeRange({ start, end }) })
   }
 
   const pieces = splitWordTags(text)
-  const wordTimed = pieces.some((piece) => piece.tag !== undefined)
+  const wordTimed = pieces.some((piece) => !!piece.tag)
   const { drafts, closeSegment } = wordTimed ? readWords(pieces, start) : { drafts: [], closeSegment: () => {} }
 
   // Without a later line, a final word carrying its own end bounds the line; otherwise it stays open.

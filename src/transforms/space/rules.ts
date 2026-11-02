@@ -33,11 +33,11 @@ const REPEATED_MARKS = /[!;,\\?:+\-=/&]{2,}/gu
 const PLACEHOLDER = /\u0001(\d+)\u0001/gu
 
 const isDigit = (char: string | undefined) => {
-  return char !== undefined && char >= '0' && char <= '9'
+  return !!char && char >= '0' && char <= '9'
 }
 
 const isLatin = (char: string | undefined) => {
-  return char !== undefined && ((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z'))
+  return !!char && ((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z'))
 }
 
 /**

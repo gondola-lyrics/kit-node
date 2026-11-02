@@ -89,13 +89,13 @@ const renderWordRomans = (line: runtime.Line, language: string | undefined, opti
       continue
     }
     const roman = word.annotation?.romans.find((item) => lowerTag(item.language) === language)
-    if (roman === undefined || getAnnotationItemText(roman) === '') {
+    if (!roman || !getAnnotationItemText(roman)) {
       continue
     }
-    let prefix = pieces.length > 0 && spaced ? ' ' : ''
+    let prefix = pieces.length && spaced ? ' ' : ''
     spaced = false
     for (const token of roman.tokens) {
-      if (token.text === '') {
+      if (!token.text) {
         continue
       }
       pieces.push({ text: prefix + token.text, time: resolveAnnotationTokenTime(token, roman, word) })
@@ -225,7 +225,7 @@ export const generateLrc = (lyric: runtime.Lyric, options: LrcGenerateOptions = 
   const resolved = resolveOptions(options)
   const header = resolved.includeMeta && lyric.meta ? renderMetaRows(lyric.meta, resolved) : []
 
-  const hasWords = lyric.lines.some((line) => (line.content?.words.length ?? 0) > 0)
+  const hasWords = lyric.lines.some((line) => !!line.content?.words.length)
   const wordLevel = hasWords && resolved.wordTiming !== 'none'
 
   const body = lyric.lines
