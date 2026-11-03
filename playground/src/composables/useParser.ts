@@ -13,6 +13,7 @@ import {
   insertInstrumentalLines,
   insertSpacesInLines,
   parse,
+  parseKrc,
   parseLrc,
   parseQrc,
   parseTtml,
@@ -39,6 +40,7 @@ const readForm = (): PlaygroundForm => {
     autoContent: '',
     lrcContent: '',
     qrcContent: '',
+    krcContent: '',
     ttmlContent: '',
     translations: '',
     romans: '',
@@ -50,7 +52,7 @@ const readForm = (): PlaygroundForm => {
       return defaults
     }
     const saved = raw as Record<string, unknown>
-    const mode = saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'ttml' ? saved.mode : 'auto'
+    const mode = saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'krc' || saved.mode === 'ttml' ? saved.mode : 'auto'
     // An older entry stored one `content` field; it belongs to whichever mode was selected then.
     const legacy = readText(saved, 'content')
     return {
@@ -58,6 +60,7 @@ const readForm = (): PlaygroundForm => {
       autoContent: readText(saved, 'autoContent') || (mode === 'auto' ? legacy : ''),
       lrcContent: readText(saved, 'lrcContent') || (mode === 'lrc' ? legacy : ''),
       qrcContent: readText(saved, 'qrcContent') || (mode === 'qrc' ? legacy : ''),
+      krcContent: readText(saved, 'krcContent') || (mode === 'krc' ? legacy : ''),
       ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
@@ -163,9 +166,11 @@ export const useParser = () => {
                 },
                 input.options.parse.qrc,
               )
-            : input.mode === 'ttml'
-              ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
-              : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
+            : input.mode === 'krc'
+              ? parseKrc(input.krcContent)
+              : input.mode === 'ttml'
+                ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
+                : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
       if (!parsed) {
         result.value = null
         error.value = 'error.unrecognized'

@@ -3,8 +3,9 @@ import { ref } from 'vue'
 const EN = {
   'app.language': 'Change language',
   'input.title': 'Input',
-  'input.placeholder': 'Paste LRC, QRC or TTML lyrics here…',
+  'input.placeholder': 'Paste LRC, QRC, KRC or TTML lyrics here…',
   'input.qrcPlaceholder': 'Paste plain QRC lyrics or a QRC XML document here…',
+  'input.krcPlaceholder': 'Paste decrypted KRC lyrics here…',
   'input.label': 'Input',
   'input.storage': 'Browser storage is unavailable. Your input and settings will not be saved.',
   'input.translations': 'Translations',
@@ -168,8 +169,9 @@ const EN = {
 const ZH: Record<MessageKey, string> = {
   'app.language': '切换语言',
   'input.title': '输入',
-  'input.placeholder': '在这里粘贴 LRC、QRC 或 TTML 歌词…',
+  'input.placeholder': '在这里粘贴 LRC、QRC、KRC 或 TTML 歌词…',
   'input.qrcPlaceholder': '在这里粘贴明文 QRC 歌词或 QRC XML 文档…',
+  'input.krcPlaceholder': '在这里粘贴解密后的 KRC 歌词…',
   'input.label': '输入',
   'input.storage': '浏览器存储不可用，当前输入与设置不会被保存。',
   'input.translations': '翻译',

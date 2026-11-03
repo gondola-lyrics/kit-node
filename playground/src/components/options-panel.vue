@@ -574,12 +574,13 @@ const nonLyricCategoryOptions = computed(() => {
   })
 })
 
+// KRC exposes no parse options, so its parse panel has nothing to show.
 const available = computed(() => {
-  return props.scope === 'result' || !!props.format
+  return props.scope === 'result' || (!!props.format && props.format !== 'krc')
 })
 const overrides = computed(() => getOptionOverrides(options.value))
 const parseChanges = computed(() => {
-  return props.format ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
+  return props.format && props.format !== 'krc' ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
 })
 const transformChanges = computed(() => {
   return Object.values(overrides.value?.transforms ?? {}).reduce((count, group) => count + Object.keys(group).length, 0)

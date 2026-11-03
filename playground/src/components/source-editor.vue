@@ -13,7 +13,7 @@
           :id="'lyrics-input-' + form.mode"
           v-model="content"
           :class="$style.editor"
-          :placeholder="t(form.mode === 'qrc' ? 'input.qrcPlaceholder' : 'input.placeholder')"
+          :placeholder="t(form.mode === 'qrc' ? 'input.qrcPlaceholder' : form.mode === 'krc' ? 'input.krcPlaceholder' : 'input.placeholder')"
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -63,6 +63,7 @@ const modes = computed(() => {
     { value: 'auto' as const, label: t('settings.auto'), id: 'mode-auto', controls: 'input-auto' },
     { value: 'lrc' as const, label: 'LRC', id: 'mode-lrc', controls: 'input-lrc' },
     { value: 'qrc' as const, label: 'QRC', id: 'mode-qrc', controls: 'input-qrc' },
+    { value: 'krc' as const, label: 'KRC', id: 'mode-krc', controls: 'input-krc' },
     { value: 'ttml' as const, label: 'TTML', id: 'mode-ttml', controls: 'input-ttml' },
   ]
 })
