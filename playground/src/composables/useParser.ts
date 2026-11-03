@@ -1,7 +1,8 @@
+import type { LyricFormat } from '@gondola-lyrics/kit'
 import type { PlaygroundForm, PlaygroundResult } from '../lib/playground'
 import type { MessageKey } from './useI18n'
 
-import { encode, validateLyric } from '@gondola-lyrics/model/runtime'
+import { LyricStatus, encode, validateLyric } from '@gondola-lyrics/model/runtime'
 import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
 import {
@@ -69,6 +70,14 @@ const readForm = (): PlaygroundForm => {
   } catch {
     return defaults
   }
+}
+
+// Naming the detected format is the only way an explicit mode can explain an empty result.
+const FORMAT_HINT: Record<LyricFormat, MessageKey> = {
+  lrc: 'error.looksLikeLrc',
+  qrc: 'error.looksLikeQrc',
+  krc: 'error.looksLikeKrc',
+  ttml: 'error.looksLikeTtml',
 }
 
 /**
@@ -175,6 +184,15 @@ export const useParser = () => {
         result.value = null
         error.value = 'error.unrecognized'
         return
+      }
+      // An explicit mode must name the format when the source itself belongs to another one.
+      if (input.mode !== 'auto' && parsed.lyric.status !== LyricStatus.VALID) {
+        const detected = detectFormat(content)
+        if (detected && detected !== input.mode) {
+          resetResult()
+          error.value = FORMAT_HINT[detected]
+          return
+        }
       }
       // Restart from the parsed model so disabling a transform also removes its derived changes.
       let lyric = parsed.lyric
