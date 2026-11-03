@@ -1,5 +1,6 @@
 export * from './annotation'
 export * from './array'
+export * from './encoding'
 export * from './kana'
 export * from './language'
 export * from './rules'
