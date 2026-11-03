@@ -60,7 +60,10 @@ export interface QrcParseOptions {
 
 export type QrcParseInput = QrcContent
 
-interface RubySource {
+/**
+ * One reading and the length of the source word it covers, in Unicode code points.
+ */
+export interface RubySource {
   length: number
   ruby: runtime.WordAnnotationRuby
 }
@@ -79,7 +82,12 @@ const RUBY_WORD_PATTERN = /[\p{Script=Han}\p{Number}]/u
 const SEPARATORS = /^\p{White_Space}+$/u
 const NATIVE_ANNOTATION_TIMING: AnnotationTiming = { precision: 1, rounding: 1 }
 
-const readRubyEntries = (value: string): RubySource[] | undefined => {
+/**
+ * Reads coverage markers and optional absolute token times without interpreting timing digits as coverage.
+ *
+ * @returns Complete ruby sources, or undefined when any source cannot be read.
+ */
+export const readRubyEntries = (value: string): RubySource[] | undefined => {
   const entries: RubySource[] = []
   let length = 0
   let tokens: runtime.WordAnnotationToken[] = []
@@ -127,6 +135,7 @@ const readRubyEntries = (value: string): RubySource[] | undefined => {
   return cursor === value.length && finish() ? entries : undefined
 }
 
+// QRC consumes every kana tag, damaged or unmatched included; only the first valid reading is used.
 const readRubies = (meta: runtime.Meta): RubySource[] | undefined => {
   let entries: RubySource[] | undefined
   const unknowns: runtime.UnknownEntry[] = []
@@ -247,14 +256,14 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
 /**
  * Attaches whole-word ruby without changing the source text, segmentation, or timing.
  *
- * @param lines Original QRC rows before filtering or sorting.
+ * @param lines Original timed rows before filtering or sorting.
  * @param sources Readings with source coverage lengths and optional token times.
  *
- * @returns Annotated rows, reusing arrays and nodes when they are unchanged.
+ * @returns Annotated rows and matched source indices, preserving unchanged nodes.
  */
-const attachRubies = (lines: runtime.Line[], sources: RubySource[]): runtime.Line[] => {
+export const attachRubies = (lines: runtime.Line[], sources: RubySource[]): { lines: runtime.Line[]; matched: Set<number> } => {
   if (!sources.length) {
-    return lines
+    return { lines, matched: new Set<number>() }
   }
   const words: (RubyWord | undefined)[] = []
   for (const line of lines) {
@@ -274,10 +283,10 @@ const attachRubies = (lines: runtime.Line[], sources: RubySource[]): runtime.Lin
   }
   const matched = matchRubies(words, sources)
   if (!matched.size) {
-    return lines
+    return { lines, matched: new Set<number>() }
   }
   const annotations = new Map([...matched].map(([source, target]) => [words[target]!.word, sources[source]!.ruby]))
-  return mapShared(lines, (line) => {
+  const annotated = mapShared(lines, (line) => {
     const content = line.content
     if (!content) {
       return line
@@ -291,6 +300,7 @@ const attachRubies = (lines: runtime.Line[], sources: RubySource[]): runtime.Lin
     })
     return words === content.words ? line : { ...line, content: { ...content, words } }
   })
+  return { lines: annotated, matched: new Set(matched.keys()) }
 }
 
 const readMeta = (body: string, meta: runtime.Meta) => {
@@ -471,7 +481,7 @@ export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions
   const wordTolerance = Number.isFinite(options.wordAnnotationTolerance) ? (options.wordAnnotationTolerance ?? 0) : 0
 
   const annotated = attachAnnotations(
-    !rubies ? parsed.lines : attachRubies(parsed.lines, rubies),
+    !rubies ? parsed.lines : attachRubies(parsed.lines, rubies).lines,
     { translations: translationLines, romans: romanLines },
     {
       matchByOrder: true,
