@@ -42,7 +42,7 @@ export const parseWordTime = (body: string, lineStart: number) => {
 }
 
 /**
- * Tags precede their text, as in `<0,500>hel`.
+ * A recognized tag precedes its text; a missing tag identifies the literal prefix.
  */
 export interface WordPiece {
   text: string
@@ -50,36 +50,42 @@ export interface WordPiece {
 }
 
 /**
- * Untagged leading text is preserved; empty timed pieces retain explicit segment boundaries.
- * Only recognized time tags split content; other angle-bracket text remains literal.
+ * Splits recognized tags from their following text while preserving literal content and empty tagged segments.
+ *
+ * @param pattern A global pattern whose first capture is the tag body.
+ * @param accepts Optional format-specific tag validation.
+ *
+ * @returns Source pieces in their original order, including an untagged prefix when present.
  */
-export const splitWordTags = (content: string) => {
+export const scanWordTags = (content: string, pattern: RegExp, accepts?: (tag: string) => boolean): WordPiece[] => {
   const pieces: WordPiece[] = []
   let tag: string | undefined
   let cursor = 0
 
-  for (const match of content.matchAll(WORD_TAG_PATTERN)) {
+  for (const match of content.matchAll(pattern)) {
     const nextTag = match[1] ?? ''
-    if (!parseWordTime(nextTag, 0)) {
+    if (accepts && !accepts(nextTag)) {
       continue
     }
-    const at = match.index
-    const before = content.slice(cursor, at)
-
-    if (before || tag) {
+    const before = content.slice(cursor, match.index)
+    if (before || tag !== undefined) {
       pieces.push({ text: before, tag })
     }
-
     tag = nextTag
-    cursor = at + match[0].length
+    cursor = match.index + match[0].length
   }
 
   const tail = content.slice(cursor)
-  if (tail) {
+  if (tail || tag !== undefined) {
     pieces.push({ text: tail, tag })
-  } else if (tag) {
-    pieces.push({ text: '', tag })
   }
-
   return pieces
+}
+
+/**
+ * Untagged leading text is preserved; empty timed pieces retain explicit segment boundaries.
+ * Only recognized time tags split content; other angle-bracket text remains literal.
+ */
+export const splitWordTags = (content: string) => {
+  return scanWordTags(content, WORD_TAG_PATTERN, (tag) => !!parseWordTime(tag, 0))
 }
