@@ -384,6 +384,15 @@ const readWords = (text: string): runtime.Word[] | undefined => {
   return words
 }
 
+/**
+ * Kugou writes `//` where it holds no translation, in QRC source rows and in its language payload alike.
+ *
+ * @returns Whether the trimmed text is that sentinel instead of real content.
+ */
+export const isPlaceholderText = (text: string): boolean => {
+  return text.trim() === '//'
+}
+
 const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; placeholders: Set<number> } => {
   const lines: runtime.Line[] = []
   const meta = makeMeta()
@@ -396,7 +405,7 @@ const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; p
       const text = line.slice(match[0].length)
       const words = readWords(text)
       const contentText = (words ? getWordsText(words) : text).trim()
-      const placeholder = contentText === '//'
+      const placeholder = isPlaceholderText(contentText)
       if (placeholder) {
         placeholders.add(lines.length)
       }
@@ -438,11 +447,12 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
   readLrc(text, {
     onLine: (line, timing) => {
       // QRC placeholders must keep both their timing slot and source precision after conversion.
-      const annotation = getContentText(line.content).trim() === '//' ? makeLineInstrumental({ time: line.time }) : line
+      const annotation = isPlaceholderText(getContentText(line.content)) ? makeLineInstrumental({ time: line.time }) : line
       timings.set(annotation, timing)
       lines.push(annotation)
     },
   })
+
   return lines
 }
 
