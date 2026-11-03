@@ -27,7 +27,7 @@ import { finalizeLyric } from '../result'
 import { attachRubies, readRubyEntries } from '../qrc'
 import { decodeBase64 } from '@root/utils'
 
-import { META_PATTERN, TAG_PATTERN, readLrcMetaTags, scanWordTags } from '../lrc'
+import { META_PATTERN, TAG_PATTERN, readLrc, readLrcMetaTags, scanWordTags } from '../lrc'
 import { FORMAT, LINE_PATTERN, WORD_PATTERN, readKrcContent } from './common'
 
 export type KrcParseInput = KrcContent
@@ -248,8 +248,9 @@ const attachKugouLanguage = (lines: runtime.Line[], meta: runtime.Meta): runtime
 }
 
 /**
- * Parses decrypted native KRC, retaining explicit durations and attaching embedded annotations by source slot.
+ * Parses decrypted Kugou lyrics, retaining explicit durations and attaching embedded annotations by source slot.
  *
+ * A source carrying no KRC row is read as LRC, so a platform fallback keeps its container annotations.
  * Kana supplies whole-word ruby; type 0 language tracks retain complete line romanization.
  * Incomplete metadata remains available in unknowns, and source timing violations remain visible in diagnostics.
  *
@@ -262,7 +263,10 @@ export const parseKrc = (input: string | KrcParseInput): ParseResult => {
   if (!source) {
     return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID }))
   }
-  const parsed = readKrc(source.original)
+
+  const native = readKrc(source.original)
+  const parsed = native.lines.length ? native : readLrc(source.original)
+
   const meta = readLrcMetaTags(parsed.metaTags)
   const lines = attachKugouLanguage(attachKana(parsed.lines, meta), meta)
   return finalizeLyric(
