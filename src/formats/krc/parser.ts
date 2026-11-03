@@ -24,7 +24,7 @@ import {
 } from '@gondola-lyrics/model/runtime'
 
 import { finalizeLyric } from '../result'
-import { attachRubies, readRubyEntries } from '../qrc'
+import { attachRubies, isPlaceholderText, readRubyEntries } from '../qrc'
 import { decodeBase64 } from '@root/utils'
 
 import { META_PATTERN, TAG_PATTERN, readLrc, readLrcMetaTags, scanWordTags } from '../lrc'
@@ -167,7 +167,8 @@ const attachTrack = (lines: runtime.Line[], track: LanguageTrack): { lines: runt
     if (cells.length > 1) {
       complete = false
     }
-    if (!text.trim()) {
+    // A slot Kugou left without a translation carries nothing to attach.
+    if (!text.trim() || isPlaceholderText(text)) {
       continue
     }
     const line = result[index]!
@@ -251,6 +252,7 @@ const attachKugouLanguage = (lines: runtime.Line[], meta: runtime.Meta): runtime
  * Parses decrypted Kugou lyrics, retaining explicit durations and attaching embedded annotations by source slot.
  *
  * A source carrying no KRC row is read as LRC, so a platform fallback keeps its container annotations.
+ * Placeholder slots carry no annotation, so they never keep a credit line in the stream.
  * Kana supplies whole-word ruby; type 0 language tracks retain complete line romanization.
  * Incomplete metadata remains available in unknowns, and source timing violations remain visible in diagnostics.
  *
