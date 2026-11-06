@@ -2,6 +2,7 @@ import { CreditRole } from '@gondola-lyrics/model/runtime'
 
 import enRules from '@rules/credits/en.json'
 import zhHansRules from '@rules/credits/zh-hans.json'
+
 import { findRuleMatchCuts, toRuleMatchKey } from '@root/utils'
 
 const MATCH_CACHE_LIMIT = 256

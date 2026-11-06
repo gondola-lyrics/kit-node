@@ -19,6 +19,13 @@ export const DEFAULT_CREDIT_NAME_SEPARATORS = ['+', '：', '/'] as const
 
 export interface ExtractCreditsOptions {
   /**
+   * Matches existing unknown metadata keys as credit labels and consumes fully readable matches.
+   * Values use nameSeparators; unrecognized keys and values with no readable names remain unchanged.
+   *
+   * @default false
+   */
+  matchUnknowns?: boolean
+  /**
    * Removes extracted source lines unless they carry background vocals, line annotations, or word translations or romanizations.
    * Ruby annotations alone do not prevent removal.
    *
@@ -127,6 +134,7 @@ const hasCreditColon = (word: runtime.Word): boolean => {
 /**
  * Preserves source labels and name spelling while matching normalized credit labels in normal lead lines.
  * Merges names by role and original label without inferring their language.
+ * Unknown metadata is processed only when matchUnknowns is enabled; consumed entries leave the unknown list.
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
@@ -137,36 +145,11 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
   let credits = originalCredits
   let creditIndex: CreditIndex | undefined
 
-  const originalLines = lyric.lines
-  let remainingLines: runtime.Line[] | undefined
-  for (let index = 0; index < originalLines.length; index += 1) {
-    const line = originalLines[index]!
-    if (line.type !== LineType.NORMAL) {
-      remainingLines?.push(line)
-      continue
-    }
-
-    const content = line.content
-    // Avoid joining word-timed lyric content when no word can contain a credit delimiter.
-    const hasCandidateContent = content?.text !== undefined || (content?.words.some(hasCreditColon) ?? false)
-    if (!hasCandidateContent) {
-      remainingLines?.push(line)
-      continue
-    }
-    const text = getContentText(content)
-    const colon = text.search(/[:：]/)
-    if (colon === -1) {
-      remainingLines?.push(line)
-      continue
-    }
-    const raw = trimRuleWhitespace(text.slice(0, colon))
+  const appendCredit = (raw: string, names: string[]): boolean => {
     const roles = matchCreditLabel(raw)
-    const names = roles ? readCreditNames(text.slice(colon + 1), separators) : []
     if (!roles || !names.length) {
-      remainingLines?.push(line)
-      continue
+      return false
     }
-
     creditIndex ??= createCreditIndex(originalCredits)
     let entries = creditIndex.get(raw)
     if (!entries) {
@@ -195,6 +178,53 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
         entry.names.add(name)
       }
     }
+    return true
+  }
+
+  const originalUnknowns = lyric.meta?.unknowns ?? []
+  let unknowns = originalUnknowns
+  if (options.matchUnknowns) {
+    for (const [index, entry] of originalUnknowns.entries()) {
+      const raw = trimRuleWhitespace(entry.key)
+      const names = matchCreditLabel(raw) ? readCreditNames(entry.value, separators) : []
+      if (appendCredit(raw, names)) {
+        if (unknowns === originalUnknowns) {
+          unknowns = originalUnknowns.slice(0, index)
+        }
+      } else if (unknowns !== originalUnknowns) {
+        unknowns.push(entry)
+      }
+    }
+  }
+
+  const originalLines = lyric.lines
+  let remainingLines: runtime.Line[] | undefined
+  for (let index = 0; index < originalLines.length; index += 1) {
+    const line = originalLines[index]!
+    if (line.type !== LineType.NORMAL) {
+      remainingLines?.push(line)
+      continue
+    }
+
+    const content = line.content
+    // Avoid joining word-timed lyric content when no word can contain a credit delimiter.
+    const hasCandidateContent = content?.text !== undefined || (content?.words.some(hasCreditColon) ?? false)
+    if (!hasCandidateContent) {
+      remainingLines?.push(line)
+      continue
+    }
+    const text = getContentText(content)
+    const colon = text.search(/[:：]/)
+    if (colon === -1) {
+      remainingLines?.push(line)
+      continue
+    }
+    const raw = trimRuleWhitespace(text.slice(0, colon))
+    const names = matchCreditLabel(raw) ? readCreditNames(text.slice(colon + 1), separators) : []
+    if (!appendCredit(raw, names)) {
+      remainingLines?.push(line)
+      continue
+    }
 
     if (options.removeSourceLines && canRemoveSourceLine(line)) {
       remainingLines ??= originalLines.slice(0, index)
@@ -203,7 +233,7 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
     }
   }
 
-  if (credits === originalCredits && !remainingLines) {
+  if (credits === originalCredits && unknowns === originalUnknowns && !remainingLines) {
     return lyric
   }
 
@@ -220,6 +250,11 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
     }
   }
 
-  const meta = credits === originalCredits ? lyric.meta : lyric.meta ? { ...lyric.meta, credits } : makeMeta({ credits })
+  const meta =
+    credits === originalCredits && unknowns === originalUnknowns
+      ? lyric.meta
+      : lyric.meta
+        ? { ...lyric.meta, credits, unknowns }
+        : makeMeta({ credits, unknowns })
   return { ...lyric, meta, lines, timing, languages: removed ? deriveLanguageUsages(lines) : lyric.languages }
 }
