@@ -458,10 +458,11 @@ const updateMusicInfo = (key: 'titles' | 'artists', event: Event) => {
 watch(
   () => options.value.transforms.filters.musicInfo,
   (musicInfo) => {
-    for (const [key, draft] of [
+    const fields = [
       ['titles', musicTitlesText],
       ['artists', musicArtistsText],
-    ] as const) {
+    ] as const
+    for (const [key, draft] of fields) {
       const names = musicInfo?.[key] ?? []
       const parsed = readMusicNames(draft.value)
       if (parsed.length !== names.length || parsed.some((name, index) => name !== names[index])) {
@@ -589,13 +590,13 @@ const nonLyricCategoryOptions = computed(() => {
   })
 })
 
-// KRC exposes no parse options, so its parse panel has nothing to show.
+// Formats without parse options have no settings panel to display.
 const available = computed(() => {
-  return props.scope === 'result' || (!!props.format && props.format !== 'krc')
+  return props.scope === 'result' || (!!props.format && props.format !== 'krc' && props.format !== 'kwrc')
 })
 const overrides = computed(() => getOptionOverrides(options.value))
 const parseChanges = computed(() => {
-  return props.format && props.format !== 'krc' ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
+  return props.format && props.format !== 'krc' && props.format !== 'kwrc' ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
 })
 const transformChanges = computed(() => {
   return Object.values(overrides.value?.transforms ?? {}).reduce((count, group) => count + Object.keys(group).length, 0)

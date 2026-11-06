@@ -74,6 +74,9 @@ const placeholder = computed(() => {
   if (props.form.mode === 'krc') {
     return t('input.krcPlaceholder')
   }
+  if (props.form.mode === 'kwrc') {
+    return t('input.kwrcPlaceholder')
+  }
   return t('input.placeholder')
 })
 const modes = computed(() => {
@@ -83,6 +86,7 @@ const modes = computed(() => {
     { value: 'qrc' as const, label: 'QRC', id: 'mode-qrc', controls: 'input-qrc' },
     { value: 'yrc' as const, label: 'YRC', id: 'mode-yrc', controls: 'input-yrc' },
     { value: 'krc' as const, label: 'KRC', id: 'mode-krc', controls: 'input-krc' },
+    { value: 'kwrc' as const, label: 'KWRC', id: 'mode-kwrc', controls: 'input-kwrc' },
     { value: 'ttml' as const, label: 'TTML', id: 'mode-ttml', controls: 'input-ttml' },
   ]
 })

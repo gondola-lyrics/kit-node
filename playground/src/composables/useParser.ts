@@ -15,6 +15,7 @@ import {
   insertSpacesInLines,
   parse,
   parseKrc,
+  parseKwrc,
   parseLrc,
   parseQrc,
   parseTtml,
@@ -44,6 +45,7 @@ const readForm = (): PlaygroundForm => {
     qrcContent: '',
     yrcContent: '',
     krcContent: '',
+    kwrcContent: '',
     ttmlContent: '',
     translations: '',
     romans: '',
@@ -58,7 +60,9 @@ const readForm = (): PlaygroundForm => {
     }
     const saved = raw as Record<string, unknown>
     const mode =
-      saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'yrc' || saved.mode === 'krc' || saved.mode === 'ttml' ? saved.mode : 'auto'
+      saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'yrc' || saved.mode === 'krc' || saved.mode === 'kwrc' || saved.mode === 'ttml'
+        ? saved.mode
+        : 'auto'
     // An older entry stored one `content` field; it belongs to whichever mode was selected then.
     const legacy = readText(saved, 'content')
     return {
@@ -68,6 +72,7 @@ const readForm = (): PlaygroundForm => {
       qrcContent: readText(saved, 'qrcContent') || (mode === 'qrc' ? legacy : ''),
       yrcContent: readText(saved, 'yrcContent') || (mode === 'yrc' ? legacy : ''),
       krcContent: readText(saved, 'krcContent') || (mode === 'krc' ? legacy : ''),
+      kwrcContent: readText(saved, 'kwrcContent') || (mode === 'kwrc' ? legacy : ''),
       ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
@@ -86,6 +91,7 @@ const FORMAT_HINT: Record<LyricFormat, MessageKey> = {
   qrc: 'error.looksLikeQrc',
   yrc: 'error.looksLikeYrc',
   krc: 'error.looksLikeKrc',
+  kwrc: 'error.looksLikeKwrc',
   ttml: 'error.looksLikeTtml',
 }
 
@@ -197,9 +203,11 @@ export const useParser = () => {
                 )
               : input.mode === 'krc'
                 ? parseKrc(input.krcContent)
-                : input.mode === 'ttml'
-                  ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
-                  : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
+                : input.mode === 'kwrc'
+                  ? parseKwrc(input.kwrcContent)
+                  : input.mode === 'ttml'
+                    ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
+                    : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
       if (!parsed) {
         result.value = null
         error.value = 'error.unrecognized'
