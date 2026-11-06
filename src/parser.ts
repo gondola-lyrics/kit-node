@@ -9,9 +9,11 @@ export type {
   TtmlProfile,
   TtmlParseInput,
   TtmlParseOptions,
+  YrcParseInput,
+  YrcParseOptions,
 } from './formats'
 
-export { detectFormat, parse, parseKrc, parseLrc, parseQrc, parseTtml } from './formats'
+export { detectFormat, parse, parseKrc, parseLrc, parseQrc, parseTtml, parseYrc } from './formats'
 
 export type {
   DeriveWordEmphasisOptions,

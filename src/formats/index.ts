@@ -5,11 +5,13 @@ import type { LrcGenerateOptions, LrcGenerateResult, LrcParseInput, LrcParseOpti
 import type { QrcParseInput, QrcParseOptions } from './qrc'
 import type { ParseResult } from './result'
 import type { TtmlGenerateOptions, TtmlGenerateResult, TtmlParseOptions } from './ttml'
+import type { YrcParseInput, YrcParseOptions } from './yrc'
 
 import { detectKrc, parseKrc } from './krc'
 import { detectLrc, generateLrc, parseLrc } from './lrc'
 import { detectQrc, parseQrc } from './qrc'
 import { detectTtml, generateTtml, parseTtml } from './ttml'
+import { detectYrc, parseYrc } from './yrc'
 
 /**
  * Recognition reads only the original text; the annotation tracks never decide the format.
@@ -19,6 +21,9 @@ import { detectTtml, generateTtml, parseTtml } from './ttml'
 export const detectFormat = (input: unknown): LyricFormat | undefined => {
   if (detectKrc(input)) {
     return 'krc'
+  }
+  if (detectYrc(input)) {
+    return 'yrc'
   }
   if (detectQrc(input)) {
     return 'qrc'
@@ -37,7 +42,7 @@ export const detectFormat = (input: unknown): LyricFormat | undefined => {
  * Unrecognized text returns `null`; a recognized format returns its canonical lyric and diagnostics.
  * Annotation tracks travel with the source and are attached by the format's parser.
  */
-export const parse = (input: unknown, options: LrcParseOptions & QrcParseOptions & TtmlParseOptions = {}): ParseResult | null => {
+export const parse = (input: unknown, options: LrcParseOptions & QrcParseOptions & TtmlParseOptions & YrcParseOptions = {}): ParseResult | null => {
   const format = detectFormat(input)
   if (!format) {
     return null
@@ -52,6 +57,8 @@ export const parse = (input: unknown, options: LrcParseOptions & QrcParseOptions
       return parseQrc(input as string | QrcParseInput, options)
     case 'ttml':
       return parseTtml(input as string, options)
+    case 'yrc':
+      return parseYrc(input as string | YrcParseInput, options)
   }
 }
 
@@ -100,3 +107,4 @@ export * from './krc'
 export * from './lrc'
 export * from './qrc'
 export * from './ttml'
+export * from './yrc'
