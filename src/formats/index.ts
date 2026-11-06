@@ -1,6 +1,7 @@
 import type { runtime } from '@gondola-lyrics/model'
 import type { LyricFormat } from './format'
 import type { KrcParseInput } from './krc'
+import type { KwrcParseInput } from './kwrc'
 import type { LrcGenerateOptions, LrcGenerateResult, LrcParseInput, LrcParseOptions } from './lrc'
 import type { QrcParseInput, QrcParseOptions } from './qrc'
 import type { ParseResult } from './result'
@@ -8,6 +9,7 @@ import type { TtmlGenerateOptions, TtmlGenerateResult, TtmlParseOptions } from '
 import type { YrcParseInput, YrcParseOptions } from './yrc'
 
 import { detectKrc, parseKrc } from './krc'
+import { detectKwrc, parseKwrc } from './kwrc'
 import { detectLrc, generateLrc, parseLrc } from './lrc'
 import { detectQrc, parseQrc } from './qrc'
 import { detectTtml, generateTtml, parseTtml } from './ttml'
@@ -27,6 +29,9 @@ export const detectFormat = (input: unknown): LyricFormat | undefined => {
   }
   if (detectQrc(input)) {
     return 'qrc'
+  }
+  if (detectKwrc(input)) {
+    return 'kwrc'
   }
   if (detectLrc(input)) {
     return 'lrc'
@@ -51,6 +56,8 @@ export const parse = (input: unknown, options: LrcParseOptions & QrcParseOptions
   switch (format) {
     case 'krc':
       return parseKrc(input as string | KrcParseInput)
+    case 'kwrc':
+      return parseKwrc(input as string | KwrcParseInput)
     case 'lrc':
       return parseLrc(input as string | LrcParseInput, options)
     case 'qrc':
@@ -104,6 +111,7 @@ export type { ParseResult } from './result'
 export type { LyricFormat } from './format'
 
 export * from './krc'
+export * from './kwrc'
 export * from './lrc'
 export * from './qrc'
 export * from './ttml'

@@ -2,6 +2,7 @@ export type {
   LyricFormat,
   ParseResult,
   KrcParseInput,
+  KwrcParseInput,
   LrcParseInput,
   LrcParseOptions,
   QrcParseInput,
@@ -13,7 +14,7 @@ export type {
   YrcParseOptions,
 } from './formats'
 
-export { detectFormat, parse, parseKrc, parseLrc, parseQrc, parseTtml, parseYrc } from './formats'
+export { detectFormat, parse, parseKrc, parseKwrc, parseLrc, parseQrc, parseTtml, parseYrc } from './formats'
 
 export type {
   DeriveWordEmphasisOptions,
