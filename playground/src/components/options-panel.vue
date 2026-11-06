@@ -27,7 +27,7 @@
         <template v-if="scope === 'parse'">
           <div :class="$style.parse">
             <NumberField
-              v-if="format === 'lrc' || format === 'qrc'"
+              v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'"
               :id="id + '-tolerance'"
               v-model="annotationOptions.annotationTolerance"
               :label="t('settings.annotationTolerance')"
@@ -49,7 +49,7 @@
               <small :id="id + '-language-hint'">{{ t('settings.languageHint') }}</small>
             </div>
             <NumberField
-              v-if="format === 'lrc' || format === 'qrc'"
+              v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'"
               :id="id + '-word-tolerance'"
               v-model="annotationOptions.wordAnnotationTolerance"
               :label="t('settings.wordAnnotationTolerance')"
@@ -57,7 +57,7 @@
               :integer="false"
               :default-value="annotationDefaults.wordAnnotationTolerance"
             />
-            <div v-if="format === 'lrc' || format === 'qrc'" :class="$style.field">
+            <div v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'" :class="$style.field">
               <label :class="$style.check">
                 <input
                   :id="id + '-word-fallback'"
@@ -101,6 +101,18 @@
                   />
                   <span>{{ t('settings.removeCreditLines') }}</span>
                 </label>
+                <div :class="$style.field">
+                  <label :class="$style.check">
+                    <input
+                      :id="id + '-credit-match-unknowns'"
+                      v-model="options.transforms.credits.matchUnknowns"
+                      type="checkbox"
+                      :aria-describedby="id + '-credit-unknowns-hint'"
+                    />
+                    <span>{{ t('settings.matchCreditUnknowns') }}</span>
+                  </label>
+                  <small :id="id + '-credit-unknowns-hint'">{{ t('settings.matchCreditUnknownsHint') }}</small>
+                </div>
                 <div :class="[$style.field, $style.creditSeparators]">
                   <label :for="id + '-credit-name-separators'">{{ t('settings.creditNameSeparators') }}</label>
                   <textarea
@@ -410,11 +422,14 @@ const options = defineModel<PlaygroundOptions>({ required: true })
 const { t } = useI18n()
 const opened = ref(false)
 const defaults = createOptions()
+const annotationFormat = computed(() => {
+  return props.format === 'qrc' || props.format === 'yrc' ? props.format : 'lrc'
+})
 const annotationOptions = computed(() => {
-  return props.format === 'qrc' ? options.value.parse.qrc : options.value.parse.lrc
+  return options.value.parse[annotationFormat.value]
 })
 const annotationDefaults = computed(() => {
-  return props.format === 'qrc' ? defaults.parse.qrc : defaults.parse.lrc
+  return defaults.parse[annotationFormat.value]
 })
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
 const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
@@ -598,6 +613,8 @@ const resetParse = () => {
     options.value.parse.lrc = initial.parse.lrc
   } else if (props.format === 'qrc') {
     options.value.parse.qrc = initial.parse.qrc
+  } else if (props.format === 'yrc') {
+    options.value.parse.yrc = initial.parse.yrc
   } else if (props.format === 'ttml') {
     options.value.parse.ttml = initial.parse.ttml
   }

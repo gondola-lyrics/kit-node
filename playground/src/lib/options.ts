@@ -12,6 +12,7 @@ import type {
   RemoveNonLyricLinesOptions,
   TtmlGenerateOptions,
   TtmlParseOptions,
+  YrcParseOptions,
 } from '@gondola-lyrics/kit'
 
 import { DEFAULT_CREDIT_NAME_SEPARATORS, InsertSpacesRules, NON_LYRIC_CATEGORIES } from '@gondola-lyrics/kit'
@@ -22,6 +23,7 @@ export interface PlaygroundOptions {
   parse: {
     lrc: Required<LrcParseOptions>
     qrc: Required<QrcParseOptions>
+    yrc: Required<YrcParseOptions>
     ttml: Required<TtmlParseOptions>
   }
   transforms: {
@@ -58,10 +60,11 @@ export const createOptions = (): PlaygroundOptions => {
     parse: {
       lrc: { annotationTolerance: 0, wordAnnotationTolerance: 0, wordAnnotationFallback: false },
       qrc: { annotationTolerance: 0, wordAnnotationTolerance: 0, wordAnnotationFallback: false },
+      yrc: { annotationTolerance: 0, wordAnnotationTolerance: 0, wordAnnotationFallback: false },
       ttml: { language: '' },
     },
     transforms: {
-      credits: { enabled: false, removeSourceLines: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
+      credits: { enabled: false, removeSourceLines: false, matchUnknowns: false, nameSeparators: [...DEFAULT_CREDIT_NAME_SEPARATORS] },
       filters: { enabled: false, categories: [...NON_LYRIC_CATEGORIES], musicInfo: undefined },
       agents: { enabled: false, removePrefixes: true, bindings: undefined },
       instrumental: { enabled: false, minDuration: 10000, minIntroDuration: 5000, endTime: undefined },
@@ -203,6 +206,7 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
   const generate = readObject(saved.generate)
   const lrcParse = readObject(parse.lrc)
   const qrcParse = readObject(parse.qrc)
+  const yrcParse = readObject(parse.yrc)
   const ttmlParse = readObject(parse.ttml)
   const credits = readObject(transforms.credits)
   const filters = readObject(transforms.filters)
@@ -228,12 +232,18 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
         wordAnnotationTolerance: readAnnotationTolerance(qrcParse.wordAnnotationTolerance, defaults.parse.qrc.wordAnnotationTolerance),
         wordAnnotationFallback: readBoolean(qrcParse.wordAnnotationFallback, defaults.parse.qrc.wordAnnotationFallback),
       },
+      yrc: {
+        annotationTolerance: readAnnotationTolerance(yrcParse.annotationTolerance, defaults.parse.yrc.annotationTolerance),
+        wordAnnotationTolerance: readAnnotationTolerance(yrcParse.wordAnnotationTolerance, defaults.parse.yrc.wordAnnotationTolerance),
+        wordAnnotationFallback: readBoolean(yrcParse.wordAnnotationFallback, defaults.parse.yrc.wordAnnotationFallback),
+      },
       ttml: { language: readString(ttmlParse.language, defaults.parse.ttml.language).trim() },
     },
     transforms: {
       credits: {
         enabled: readBoolean(credits.enabled, defaults.transforms.credits.enabled),
         removeSourceLines: readBoolean(credits.removeSourceLines, defaults.transforms.credits.removeSourceLines),
+        matchUnknowns: readBoolean(credits.matchUnknowns, defaults.transforms.credits.matchUnknowns),
         nameSeparators: readNameSeparators(credits.nameSeparators, defaults.transforms.credits.nameSeparators),
       },
       filters: {
@@ -308,6 +318,7 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
   const defaults = createOptions()
   const lrcParse = pickOverrides(options.parse.lrc, defaults.parse.lrc)
   const qrcParse = pickOverrides(options.parse.qrc, defaults.parse.qrc)
+  const yrcParse = pickOverrides(options.parse.yrc, defaults.parse.yrc)
   const ttmlParse = pickOverrides(options.parse.ttml, defaults.parse.ttml)
   const credits = pickOverrides(
     { ...options.transforms.credits, nameSeparators: undefined },
@@ -343,10 +354,11 @@ export const getOptionOverrides = (value: PlaygroundOptions): OptionOverrides | 
     ...(spaces || spaceRules ? { spaces: { ...spaces, ...spaceRules } } : {}),
   }
 
-  if (lrcParse || qrcParse || ttmlParse) {
+  if (lrcParse || qrcParse || yrcParse || ttmlParse) {
     overrides.parse = {
       ...(lrcParse ? { lrc: lrcParse } : {}),
       ...(qrcParse ? { qrc: qrcParse } : {}),
+      ...(yrcParse ? { yrc: yrcParse } : {}),
       ...(ttmlParse ? { ttml: ttmlParse } : {}),
     }
   }

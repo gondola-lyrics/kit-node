@@ -2,7 +2,7 @@
   <section :class="$style.section" aria-labelledby="input-heading">
     <h2 id="input-heading" :class="$style.heading">{{ t('input.title') }}</h2>
     <div :class="$style.card">
-      <OptionsPanel id="parse-options" v-model="form.options" scope="parse" :format="form.mode === 'auto' ? null : form.mode">
+      <OptionsPanel id="parse-options" v-model="form.options" scope="parse" :format="format">
         <ControlTabs v-model="form.mode" :items="modes" :label="t('settings.mode')" />
       </OptionsPanel>
 
@@ -13,18 +13,19 @@
           :id="'lyrics-input-' + form.mode"
           v-model="content"
           :class="$style.editor"
-          :placeholder="t(form.mode === 'qrc' ? 'input.qrcPlaceholder' : form.mode === 'krc' ? 'input.krcPlaceholder' : 'input.placeholder')"
+          :placeholder="placeholder"
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
         ></textarea>
-        <div v-if="form.mode === 'lrc' || form.mode === 'qrc'" :class="$style.tracks">
+        <div v-if="form.mode === 'lrc' || form.mode === 'qrc' || form.mode === 'yrc'" :class="$style.tracks">
           <div v-for="track in tracks" :key="track.key" :class="$style.track">
             <label :class="$style.trackLabel" :for="'lyrics-input-' + track.key">{{ track.label }}</label>
             <textarea
               :id="'lyrics-input-' + track.key"
               v-model="form[track.key]"
               :class="[$style.editor, $style.trackEditor]"
+              :placeholder="track.placeholder"
               spellcheck="false"
               autocomplete="off"
               autocapitalize="off"
@@ -42,6 +43,8 @@ import type { PlaygroundForm } from '../lib/playground'
 
 import { computed } from 'vue'
 
+import { detectFormat } from '@gondola-lyrics/kit'
+
 import { useI18n } from '../composables/useI18n'
 import { SOURCE_CONTENT_KEYS } from '../lib/playground'
 
@@ -58,19 +61,41 @@ const content = computed({
     props.form[SOURCE_CONTENT_KEYS[props.form.mode]] = value
   },
 })
+const format = computed(() => {
+  return props.form.mode === 'auto' ? (detectFormat(content.value) ?? null) : props.form.mode
+})
+const placeholder = computed(() => {
+  if (props.form.mode === 'qrc') {
+    return t('input.qrcPlaceholder')
+  }
+  if (props.form.mode === 'yrc') {
+    return t('input.yrcPlaceholder')
+  }
+  if (props.form.mode === 'krc') {
+    return t('input.krcPlaceholder')
+  }
+  return t('input.placeholder')
+})
 const modes = computed(() => {
   return [
     { value: 'auto' as const, label: t('settings.auto'), id: 'mode-auto', controls: 'input-auto' },
     { value: 'lrc' as const, label: 'LRC', id: 'mode-lrc', controls: 'input-lrc' },
     { value: 'qrc' as const, label: 'QRC', id: 'mode-qrc', controls: 'input-qrc' },
+    { value: 'yrc' as const, label: 'YRC', id: 'mode-yrc', controls: 'input-yrc' },
     { value: 'krc' as const, label: 'KRC', id: 'mode-krc', controls: 'input-krc' },
     { value: 'ttml' as const, label: 'TTML', id: 'mode-ttml', controls: 'input-ttml' },
   ]
 })
 const tracks = computed(() => {
+  if (props.form.mode === 'yrc') {
+    return [
+      { key: 'yrcTranslations' as const, label: t('input.translations'), placeholder: t('input.yrcTranslationsPlaceholder') },
+      { key: 'yrcRomans' as const, label: t('input.romans'), placeholder: t('input.yrcRomansPlaceholder') },
+    ]
+  }
   return [
-    { key: 'translations' as const, label: t('input.translations') },
-    { key: 'romans' as const, label: t('input.romans') },
+    { key: 'translations' as const, label: t('input.translations'), placeholder: '' },
+    { key: 'romans' as const, label: t('input.romans'), placeholder: '' },
   ]
 })
 </script>

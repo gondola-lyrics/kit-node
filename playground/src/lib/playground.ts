@@ -5,10 +5,11 @@ import type { PlaygroundOptions } from './options'
 export type SourceMode = 'auto' | LyricFormat
 export type ResultView = 'preview' | 'json' | GenerateFormat
 
-export const SOURCE_CONTENT_KEYS: Record<SourceMode, 'autoContent' | 'lrcContent' | 'qrcContent' | 'krcContent' | 'ttmlContent'> = {
+export const SOURCE_CONTENT_KEYS: Record<SourceMode, 'autoContent' | 'lrcContent' | 'qrcContent' | 'yrcContent' | 'krcContent' | 'ttmlContent'> = {
   auto: 'autoContent',
   lrc: 'lrcContent',
   qrc: 'qrcContent',
+  yrc: 'yrcContent',
   krc: 'krcContent',
   ttml: 'ttmlContent',
 }
@@ -18,10 +19,13 @@ export interface PlaygroundForm {
   autoContent: string
   lrcContent: string
   qrcContent: string
+  yrcContent: string
   krcContent: string
   ttmlContent: string
   translations: string
   romans: string
+  yrcTranslations: string
+  yrcRomans: string
   options: PlaygroundOptions
 }
 

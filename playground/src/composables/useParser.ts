@@ -18,6 +18,7 @@ import {
   parseLrc,
   parseQrc,
   parseTtml,
+  parseYrc,
   removeNonLyricLines,
   stripBackgroundBrackets,
 } from '@gondola-lyrics/kit'
@@ -41,10 +42,13 @@ const readForm = (): PlaygroundForm => {
     autoContent: '',
     lrcContent: '',
     qrcContent: '',
+    yrcContent: '',
     krcContent: '',
     ttmlContent: '',
     translations: '',
     romans: '',
+    yrcTranslations: '',
+    yrcRomans: '',
     options: createOptions(),
   }
   try {
@@ -53,7 +57,8 @@ const readForm = (): PlaygroundForm => {
       return defaults
     }
     const saved = raw as Record<string, unknown>
-    const mode = saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'krc' || saved.mode === 'ttml' ? saved.mode : 'auto'
+    const mode =
+      saved.mode === 'lrc' || saved.mode === 'qrc' || saved.mode === 'yrc' || saved.mode === 'krc' || saved.mode === 'ttml' ? saved.mode : 'auto'
     // An older entry stored one `content` field; it belongs to whichever mode was selected then.
     const legacy = readText(saved, 'content')
     return {
@@ -61,10 +66,13 @@ const readForm = (): PlaygroundForm => {
       autoContent: readText(saved, 'autoContent') || (mode === 'auto' ? legacy : ''),
       lrcContent: readText(saved, 'lrcContent') || (mode === 'lrc' ? legacy : ''),
       qrcContent: readText(saved, 'qrcContent') || (mode === 'qrc' ? legacy : ''),
+      yrcContent: readText(saved, 'yrcContent') || (mode === 'yrc' ? legacy : ''),
       krcContent: readText(saved, 'krcContent') || (mode === 'krc' ? legacy : ''),
       ttmlContent: readText(saved, 'ttmlContent') || (mode === 'ttml' ? legacy : ''),
       translations: readText(saved, 'translations'),
       romans: readText(saved, 'romans'),
+      yrcTranslations: readText(saved, 'yrcTranslations'),
+      yrcRomans: readText(saved, 'yrcRomans'),
       options: readOptions(saved.options),
     }
   } catch {
@@ -76,6 +84,7 @@ const readForm = (): PlaygroundForm => {
 const FORMAT_HINT: Record<LyricFormat, MessageKey> = {
   lrc: 'error.looksLikeLrc',
   qrc: 'error.looksLikeQrc',
+  yrc: 'error.looksLikeYrc',
   krc: 'error.looksLikeKrc',
   ttml: 'error.looksLikeTtml',
 }
@@ -141,7 +150,9 @@ export const useParser = () => {
 
     // Only the selected mode's source is parsed, and its annotation tracks travel with it.
     const content = input[SOURCE_CONTENT_KEYS[input.mode]]
-    const hasAnnotationTracks = input.mode === 'lrc' || input.mode === 'qrc'
+    const hasAnnotationTracks = input.mode === 'lrc' || input.mode === 'qrc' || input.mode === 'yrc'
+    const translations = input.mode === 'yrc' ? input.yrcTranslations : input.translations
+    const romans = input.mode === 'yrc' ? input.yrcRomans : input.romans
     if (!content.trim()) {
       resetResult()
       return
@@ -155,14 +166,14 @@ export const useParser = () => {
       }
       const start = performance.now()
       const automaticFormat = input.mode === 'auto' ? detectFormat(content) : undefined
-      const automaticOptions = automaticFormat === 'qrc' ? input.options.parse.qrc : input.options.parse.lrc
+      const automaticOptions = automaticFormat === 'qrc' || automaticFormat === 'yrc' ? input.options.parse[automaticFormat] : input.options.parse.lrc
       const parsed =
         input.mode === 'lrc'
           ? parseLrc(
               {
                 original: input.lrcContent,
-                translations: input.translations.trim() ? input.translations : undefined,
-                romans: input.romans.trim() ? input.romans : undefined,
+                translations: translations.trim() ? translations : undefined,
+                romans: romans.trim() ? romans : undefined,
               },
               input.options.parse.lrc,
             )
@@ -170,16 +181,25 @@ export const useParser = () => {
             ? parseQrc(
                 {
                   original: input.qrcContent,
-                  translations: input.translations.trim() ? input.translations : undefined,
-                  romans: input.romans.trim() ? input.romans : undefined,
+                  translations: translations.trim() ? translations : undefined,
+                  romans: romans.trim() ? romans : undefined,
                 },
                 input.options.parse.qrc,
               )
-            : input.mode === 'krc'
-              ? parseKrc(input.krcContent)
-              : input.mode === 'ttml'
-                ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
-                : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
+            : input.mode === 'yrc'
+              ? parseYrc(
+                  {
+                    original: input.yrcContent,
+                    translations: translations.trim() ? translations : undefined,
+                    romans: romans.trim() ? romans : undefined,
+                  },
+                  input.options.parse.yrc,
+                )
+              : input.mode === 'krc'
+                ? parseKrc(input.krcContent)
+                : input.mode === 'ttml'
+                  ? parseTtml(input.ttmlContent, { language: input.options.parse.ttml.language.trim() || undefined })
+                  : parse(input.autoContent, { ...automaticOptions, language: input.options.parse.ttml.language.trim() || undefined })
       if (!parsed) {
         result.value = null
         error.value = 'error.unrecognized'
@@ -238,7 +258,7 @@ export const useParser = () => {
         lyric,
         diagnostics,
         elapsed: performance.now() - start,
-        inputBytes: encoder.encode(content + (hasAnnotationTracks ? input.translations + input.romans : '')).byteLength,
+        inputBytes: encoder.encode(content + (hasAnnotationTracks ? translations + romans : '')).byteLength,
         encodedBytes,
         encodingError,
         options: input.options,
