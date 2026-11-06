@@ -30,6 +30,7 @@ interface TimedLine {
   text: string
   start: number
   tag: string
+  row: number
 }
 
 export interface LrcMetaTag {
@@ -51,9 +52,13 @@ export interface LrcLineTiming {
 
 export interface LrcReadOptions {
   /**
-   * Reports each line with its source precision before normalization can change its identity or order.
+   * Reports each line with its source precision and zero-based physical row before normalization changes its identity or order.
    */
-  onLine?: (line: runtime.Line, timing: LrcLineTiming) => void
+  onLine?: (line: runtime.Line, timing: LrcLineTiming, row: number) => void
+  /**
+   * Reports metadata with its zero-based physical row so container fields can preserve their relative order.
+   */
+  onMeta?: (tag: LrcMetaTag, row: number) => void
 }
 
 export interface LrcParseOptions {
@@ -97,17 +102,18 @@ const readMeta = (body: string) => {
   return { key: (match[1] ?? '').toLowerCase(), value: (match[2] ?? '').trim() }
 }
 
-const readGroup = (tags: string[], text: string, timed: TimedLine[], meta: LrcMetaTag[]) => {
+const readGroup = (tags: string[], text: string, row: number, timed: TimedLine[], meta: LrcMetaTag[], options: LrcReadOptions) => {
   for (const tag of tags) {
     const start = isTime(tag) ? parseTime(tag) : undefined
     if (start !== undefined) {
-      timed.push({ text, start, tag })
+      timed.push({ text, start, tag, row })
       continue
     }
 
     const pair = readMeta(tag)
     if (pair) {
       meta.push(pair)
+      options.onMeta?.(pair, row)
     }
   }
 }
@@ -116,11 +122,11 @@ const readGroup = (tags: string[], text: string, timed: TimedLine[], meta: LrcMe
  * Stacked timestamps share the following text, as in `[00:10][00:20]twice`.
  * Text before the first tag is discarded because it has no timing association.
  */
-const readTimedLines = (text: string) => {
+const readTimedLines = (text: string, options: LrcReadOptions) => {
   const timed: TimedLine[] = []
   const meta: LrcMetaTag[] = []
 
-  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
+  for (const [row, raw] of text.replace(/\r\n?/g, '\n').split('\n').entries()) {
     const line = raw.trim()
     if (!line) {
       continue
@@ -140,12 +146,12 @@ const readTimedLines = (text: string) => {
         continue
       }
 
-      readGroup(group, shared, timed, meta)
+      readGroup(group, shared, row, timed, meta, options)
       group = []
     }
 
     // Trailing timestamps still represent empty timed lines.
-    readGroup(group, '', timed, meta)
+    readGroup(group, '', row, timed, meta, options)
   }
 
   return { timed, meta }
@@ -282,7 +288,7 @@ const readLines = (timed: TimedLine[], options: LrcReadOptions): runtime.Line[] 
     // LRC has no line ends; only a nondecreasing next timestamp can supply one.
     const line = readLine(item.text, item.start, next)
     lines.push(line)
-    options.onLine?.(line, readLineTiming(item.tag))
+    options.onLine?.(line, readLineTiming(item.tag), item.row)
   }
 
   return lines
@@ -297,7 +303,7 @@ const readLines = (timed: TimedLine[], options: LrcReadOptions): runtime.Line[] 
  * @returns Model lines in input order and metadata tags with lowercase keys and trimmed values.
  */
 export const readLrc = (text: string, options: LrcReadOptions = {}): LrcReadResult => {
-  const { timed, meta } = readTimedLines(text)
+  const { timed, meta } = readTimedLines(text, options)
   return { lines: readLines(timed, options), metaTags: meta }
 }
 
