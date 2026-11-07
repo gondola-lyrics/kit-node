@@ -1,3 +1,27 @@
+## v0.6.0 (2026-11-07)
+
+### Features
+
+- **format-kwrc:** add parser ([7c91062](https://github.com/gondola-lyrics/kit-node/commit/7c91062749bf52bb171776329bd70ed9af168c3e))
+- **transform-credit:** support matching unknown metadata ([0865f41](https://github.com/gondola-lyrics/kit-node/commit/0865f4104210e8be6b24131925df4b13f64ef388))
+- **format-yrc:** add parser ([3cc0aa1](https://github.com/gondola-lyrics/kit-node/commit/3cc0aa150447b3ff952d5ef1c0117d33edd82058))
+- **format-lrc:** expose source positions ([a10a213](https://github.com/gondola-lyrics/kit-node/commit/a10a21314d4baa16978011050d7928911c16eef0))
+- **format-krc:** add lrc fallback for detection and parsing ([fd01079](https://github.com/gondola-lyrics/kit-node/commit/fd010791978f8bf7992da0b80d592dc97c8907c4))
+- **format-krc:** add parser ([d4f2c47](https://github.com/gondola-lyrics/kit-node/commit/d4f2c47854d31c52c20d66a9fb51d3c73a0001ad))
+- **utils:** add base64 decoder ([3306a1f](https://github.com/gondola-lyrics/kit-node/commit/3306a1fd0040dd04d4f10fad876dcd6a5a0411ae))
+
+### Fixes
+
+- **transform-credit:** remove entire source lines ([6221c7a](https://github.com/gondola-lyrics/kit-node/commit/6221c7a535093c9839e5a833c0e5edf856d70a4f))
+- **format-krc:** skip placeholder translation slots ([102aec8](https://github.com/gondola-lyrics/kit-node/commit/102aec8341b737654ae16f58d07f1b363e1cd7b8))
+
+### Refactoring
+
+- **format-qrc:** extract placeholder text check helper ([2982317](https://github.com/gondola-lyrics/kit-node/commit/298231740a1b0ab54cde7cbda256f5487cc43b5f))
+- **format-qrc:** export ruby helpers ([db4ec34](https://github.com/gondola-lyrics/kit-node/commit/db4ec3477af1c7a214b47357aab2caeff61d3a9b))
+- **format-lrc:** merge reader into parser ([4a2bcbd](https://github.com/gondola-lyrics/kit-node/commit/4a2bcbd40a77c2628307a0145cb08a620ba03b65))
+- **format-lrc:** extract reusable word tag scanner ([16e746d](https://github.com/gondola-lyrics/kit-node/commit/16e746d086411a9d171cd8531b3ad323775f43d3))
+
 ## v0.5.0 (2026-11-03)
 
 ### Features
