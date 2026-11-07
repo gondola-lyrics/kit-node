@@ -20,9 +20,11 @@
       </button>
     </div>
     <section v-if="available && opened" :id="id + '-panel'" :class="$style.panel" :aria-label="t('settings.title')">
-      <button v-if="scope === 'parse'" type="button" :class="$style.panelReset" :disabled="changed === 0" @click="resetParse">
-        {{ t('settings.reset') }}
-      </button>
+      <div v-if="scope === 'parse'" :class="$style.parseHeader">
+        <button type="button" :class="$style.reset" :disabled="changed === 0" @click="resetParse">
+          {{ t('settings.reset') }}
+        </button>
+      </div>
       <div :class="$style.content">
         <template v-if="scope === 'parse'">
           <div :class="$style.parse">
@@ -57,7 +59,7 @@
               :integer="false"
               :default-value="annotationDefaults.wordAnnotationTolerance"
             />
-            <div v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'" :class="$style.field">
+            <div v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'" :class="[$style.field, $style.fullWidth]">
               <label :class="$style.check">
                 <input
                   :id="id + '-word-fallback'"
@@ -91,16 +93,13 @@
                 <input :id="id + '-credits'" v-model="options.transforms.credits.enabled" type="checkbox" />
                 <span>{{ t('settings.extractCredits') }}</span>
               </label>
-              <div v-if="options.transforms.credits.enabled" :class="$style.fields">
-                <label :class="$style.check">
-                  <input
-                    :id="id + '-credit-source-lines'"
-                    v-model="options.transforms.credits.removeSourceLines"
-                    type="checkbox"
-                    :aria-describedby="id + '-credit-removal-hint'"
-                  />
-                  <span>{{ t('settings.removeCreditLines') }}</span>
-                </label>
+              <div v-if="options.transforms.credits.enabled" :class="[$style.fields, $style.credits]">
+                <div :class="$style.field">
+                  <label :class="$style.check">
+                    <input :id="id + '-credit-source-lines'" v-model="options.transforms.credits.removeSourceLines" type="checkbox" />
+                    <span>{{ t('settings.removeCreditLines') }}</span>
+                  </label>
+                </div>
                 <div :class="$style.field">
                   <label :class="$style.check">
                     <input
@@ -113,7 +112,7 @@
                   </label>
                   <small :id="id + '-credit-unknowns-hint'">{{ t('settings.matchCreditUnknownsHint') }}</small>
                 </div>
-                <div :class="[$style.field, $style.creditSeparators]">
+                <div :class="$style.field">
                   <label :for="id + '-credit-name-separators'">{{ t('settings.creditNameSeparators') }}</label>
                   <textarea
                     :id="id + '-credit-name-separators'"
@@ -128,7 +127,6 @@
                   ></textarea>
                   <small :id="id + '-credit-separators-hint'">{{ t('settings.creditNameSeparatorsHint') }}</small>
                 </div>
-                <small :id="id + '-credit-removal-hint'" :class="$style.hint">{{ t('settings.removeCreditLinesHint') }}</small>
               </div>
             </div>
             <div :class="$style.operation">
@@ -136,14 +134,13 @@
                 <input :id="id + '-filters'" v-model="options.transforms.filters.enabled" type="checkbox" />
                 <span>{{ t('settings.removeNonLyric') }}</span>
               </label>
-              <div v-if="options.transforms.filters.enabled" :class="$style.fields">
+              <div v-if="options.transforms.filters.enabled" :class="[$style.fields, $style.twoColumns]">
                 <small :class="$style.hint">{{ t('settings.musicInfoFormatHint') }}</small>
                 <div :class="$style.field">
                   <label :for="id + '-music-titles'">{{ t('settings.musicTitles') }}</label>
                   <textarea
                     :id="id + '-music-titles'"
                     :value="musicTitlesText"
-                    :class="$style.separators"
                     :aria-describedby="id + '-music-info-hint'"
                     spellcheck="false"
                     @input="updateMusicInfo('titles', $event)"
@@ -154,13 +151,12 @@
                   <textarea
                     :id="id + '-music-artists'"
                     :value="musicArtistsText"
-                    :class="$style.separators"
                     :aria-describedby="id + '-music-info-hint'"
                     spellcheck="false"
                     @input="updateMusicInfo('artists', $event)"
                   />
-                  <small :id="id + '-music-info-hint'">{{ t('settings.musicInfoHint') }}</small>
                 </div>
+                <small :id="id + '-music-info-hint'" :class="$style.hint">{{ t('settings.musicInfoHint') }}</small>
                 <fieldset :class="$style.ruleSet">
                   <legend>{{ t('settings.nonLyricCategories') }}</legend>
                   <label v-for="category in nonLyricCategoryOptions" :key="category.value" :class="$style.check">
@@ -168,7 +164,7 @@
                     <span>{{ category.label }}</span>
                   </label>
                 </fieldset>
-                <small :class="[$style.hint, $style.operationHint]">{{ t('settings.removeNonLyricHint') }}</small>
+                <small :class="$style.hint">{{ t('settings.removeNonLyricHint') }}</small>
               </div>
             </div>
             <div :class="$style.operation">
@@ -176,11 +172,7 @@
                 <input :id="id + '-agents'" v-model="options.transforms.agents.enabled" type="checkbox" />
                 <span>{{ t('settings.extractAgents') }}</span>
               </label>
-              <div v-if="options.transforms.agents.enabled" :class="$style.fields">
-                <label :class="$style.check">
-                  <input :id="id + '-agent-prefixes'" v-model="options.transforms.agents.removePrefixes" type="checkbox" />
-                  <span>{{ t('settings.removeAgentPrefixes') }}</span>
-                </label>
+              <div v-if="options.transforms.agents.enabled" :class="[$style.fields, $style.twoColumns]">
                 <div :class="$style.field">
                   <label :for="id + '-agent-mode'">{{ t('settings.agentMatchMode') }}</label>
                   <select :id="id + '-agent-mode'" v-model="agentMatchMode" :aria-describedby="id + '-agent-mode-hint'">
@@ -191,7 +183,11 @@
                     t(agentMatchMode === 'legacy' ? 'settings.agentLegacyHint' : 'settings.agentBindingsModeHint')
                   }}</small>
                 </div>
-                <div v-if="agentMatchMode === 'bindings'" :class="$style.field">
+                <label :class="[$style.check, $style.alignedCheck]">
+                  <input :id="id + '-agent-prefixes'" v-model="options.transforms.agents.removePrefixes" type="checkbox" />
+                  <span>{{ t('settings.removeAgentPrefixes') }}</span>
+                </label>
+                <div v-if="agentMatchMode === 'bindings'" :class="[$style.field, $style.fullWidth]">
                   <label :for="id + '-agent-bindings'">{{ t('settings.agentBindings') }}</label>
                   <textarea
                     :id="id + '-agent-bindings'"
@@ -251,7 +247,6 @@
                 v-model="options.transforms.emphasis.durationThreshold"
                 :class="$style.emphasis"
                 :label="t('settings.durationThreshold')"
-                :hint="t('settings.emphasisHint')"
                 :default-value="defaults.transforms.emphasis.durationThreshold"
               />
             </div>
@@ -260,7 +255,7 @@
                 <input :id="id + '-extract'" v-model="options.transforms.extract.enabled" type="checkbox" />
                 <span>{{ t('settings.extractBackground') }}</span>
               </label>
-              <div v-if="options.transforms.extract.enabled" :class="$style.fields">
+              <div v-if="options.transforms.extract.enabled" :class="$style.checks">
                 <label :class="$style.check">
                   <input :id="id + '-extract-full-line'" v-model="options.transforms.extract.fullLine" type="checkbox" />
                   <span>{{ t('settings.extractFullLine') }}</span>
@@ -281,9 +276,6 @@
                 <input :id="id + '-strip-brackets'" v-model="options.transforms.brackets.enabled" type="checkbox" />
                 <span>{{ t('settings.stripBrackets') }}</span>
               </label>
-              <small v-if="options.transforms.brackets.enabled" :class="[$style.hint, $style.operationHint]">{{
-                t('settings.stripBracketsHint')
-              }}</small>
             </div>
             <div :class="$style.operation">
               <label :class="$style.check">
@@ -291,7 +283,7 @@
                 <span>{{ t('settings.insertSpaces') }}</span>
               </label>
               <div v-if="options.transforms.spaces.enabled" :class="$style.fields">
-                <label :class="$style.check">
+                <label :class="[$style.check, $style.fullWidth]">
                   <input :id="id + '-space-annotations'" v-model="options.transforms.spaces.annotations" type="checkbox" />
                   <span>{{ t('settings.spaceAnnotations') }}</span>
                 </label>
@@ -302,7 +294,6 @@
                     <span>{{ rule.label }}</span>
                   </label>
                 </fieldset>
-                <small :class="[$style.hint, $style.operationHint]">{{ t('settings.insertSpacesHint') }}</small>
               </div>
             </div>
           </section>
@@ -377,12 +368,11 @@
               <template v-else>
                 <div :class="$style.field">
                   <label :for="id + '-profile'">{{ t('settings.profile') }}</label>
-                  <select :id="id + '-profile'" v-model="options.generate.ttml.profile" :aria-describedby="id + '-profile-hint'">
+                  <select :id="id + '-profile'" v-model="options.generate.ttml.profile">
                     <option value="auto">{{ t('settings.profileAuto') }}</option>
                     <option value="amll">AMLL</option>
                     <option value="itunes">iTunes</option>
                   </select>
-                  <small :id="id + '-profile-hint'">{{ t('settings.profileHint') }}</small>
                 </div>
                 <div :class="[$style.checks, $style.inlineChecks]">
                   <label :class="$style.check">
@@ -657,8 +647,7 @@ const resetGeneration = () => {
   min-width: 0;
 }
 
-.toggle,
-.panelReset {
+.toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -707,26 +696,24 @@ const resetGeneration = () => {
 }
 
 .panel {
-  position: relative;
   min-width: 0;
-  padding: 14px 16px 16px;
+  padding: 12px 20px 20px;
   border-bottom: 1px solid var(--line);
   background: #fcfdff;
 }
 
-.panelReset {
-  position: absolute;
-  top: 5px;
-  right: 16px;
-  z-index: 1;
+.parseHeader {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .content {
   container: options / inline-size;
 
   > :global(section) + :global(section) {
-    margin-top: 16px;
-    padding-top: 16px;
+    margin-top: 20px;
+    padding-top: 12px;
     border-top: 1px solid var(--line);
   }
 }
@@ -741,14 +728,8 @@ const resetGeneration = () => {
     padding-inline: 12px;
   }
 
-  .toggle,
-  .panelReset {
+  .toggle {
     min-height: 44px;
-  }
-
-  .panelReset {
-    top: 2px;
-    right: 12px;
   }
 }
 
@@ -761,15 +742,15 @@ const resetGeneration = () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .heading {
   min-width: 0;
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.6;
 }
 
@@ -800,29 +781,41 @@ const resetGeneration = () => {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px 20px;
+  max-width: 960px;
 }
 
 .checks {
   display: grid;
-  grid-column: 1 / -1;
   grid-template-columns: repeat(auto-fit, minmax(min(185px, 100%), 1fr));
-  gap: 2px 20px;
+  gap: 4px 20px;
+  align-items: start;
+  min-width: 0;
+}
+
+.grid > .checks {
+  grid-column: 1 / -1;
 }
 
 .inlineChecks {
-  grid-column: auto;
   grid-template-columns: minmax(0, 1fr);
   align-self: end;
+}
+
+.grid > .inlineChecks {
+  grid-column: auto;
 }
 
 .operation {
   display: grid;
   align-items: start;
-  gap: 6px;
+  gap: 8px 24px;
+  padding-block: 10px;
+
+  > .check {
+    font-weight: 550;
+  }
 
   + .operation {
-    margin-top: 12px;
-    padding-top: 12px;
     border-top: 1px solid var(--line);
   }
 }
@@ -831,17 +824,17 @@ const resetGeneration = () => {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 12px 14px;
-  padding-top: 3px;
+  gap: 12px 20px;
+  min-width: 0;
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
 }
 
 .emphasis {
-  max-width: 440px;
-}
-
-.creditSeparators {
-  grid-column: 1 / -1;
-  max-width: 440px;
+  width: 100%;
+  max-width: 300px;
 }
 
 .hint {
@@ -852,75 +845,66 @@ const resetGeneration = () => {
   overflow-wrap: anywhere;
 }
 
-/* A hint sitting directly under an operation label stays in the first column, close to the checkbox. */
-.operationHint {
-  grid-column: auto;
-  padding-top: 0;
-}
-
 .ruleSet {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
-  gap: 0 16px;
+  gap: 0 20px;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 
   legend {
-    margin-bottom: 2px;
+    margin-bottom: 6px;
     padding: 0;
     color: var(--muted);
     font-size: 11px;
   }
 }
 
-@container options (min-width: 330px) {
-  .fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.parse {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px 24px;
+  max-width: 960px;
+}
 
-    > :last-child {
-      grid-column: 1 / -1;
-    }
+@container options (min-width: 480px) {
+  .fields,
+  .grid,
+  .parse {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .credits > :last-child {
+    grid-column: 1 / -1;
+    max-width: 300px;
+  }
+
+  .alignedCheck {
+    margin-top: 25px;
   }
 }
 
-@container options (min-width: 560px) {
+@container options (min-width: 760px) {
   .operation {
-    grid-template-columns: 140px minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: 164px minmax(0, 1fr);
+    padding-block: 14px;
   }
 
   .fields {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-
-    > :last-child {
-      grid-column: auto;
-    }
-
-    > .hint {
-      grid-column: 1 / -1;
-    }
-
-    > div > label {
-      min-height: 36px;
-    }
   }
-}
 
-@container options (min-width: 480px) {
-  .grid {
+  .twoColumns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-.parse {
-  max-width: 640px;
-
-  :global(label) {
-    min-height: 24px;
-    padding-right: 96px;
+  .credits > :last-child {
+    grid-column: auto;
+    max-width: none;
   }
 }
 
@@ -937,7 +921,7 @@ const resetGeneration = () => {
     line-height: 1.5;
   }
 
-  :global(input),
+  :global(input:not([type='checkbox'])),
   :global(select),
   :global(textarea) {
     width: 100%;
@@ -976,15 +960,12 @@ const resetGeneration = () => {
   .bindingError {
     color: #a53b4d;
   }
-
-  .error {
-    color: #963e50;
-  }
 }
 
 @media (max-width: 820px) {
-  .field :global(input),
-  .field :global(select) {
+  .field :global(input:not([type='checkbox'])),
+  .field :global(select),
+  .field :global(textarea) {
     min-height: 44px;
     font-size: 16px;
   }
