@@ -26,8 +26,8 @@ export interface ExtractCreditsOptions {
    */
   matchUnknowns?: boolean
   /**
-   * Removes extracted source lines unless they carry background vocals, line annotations, or word translations or romanizations.
-   * Ruby annotations alone do not prevent removal.
+   * Removes successfully extracted source lines together with their backgrounds and annotations.
+   * Extracted roles and names remain in metadata; attached content is not moved to other lines.
    *
    * Refreshes language usages and falls back to line timing when no word-level content remains.
    *
@@ -110,21 +110,6 @@ const readCreditNames = (text: string, separators: readonly string[]): string[] 
     }
   }
   return [...unique]
-}
-
-const canRemoveSourceLine = (line: runtime.Line): boolean => {
-  if (line.backgrounds.length || line.annotation) {
-    return false
-  }
-
-  // Credit extraction does not carry translations or romanizations into metadata.
-  // Ruby alone must not keep extracted credits in the lyric stream.
-  return !line.content?.words.some(({ annotation }) => {
-    if (!annotation) {
-      return false
-    }
-    return !!(annotation.translations.length || annotation.romans.length)
-  })
 }
 
 const hasCreditColon = (word: runtime.Word): boolean => {
@@ -226,7 +211,7 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
       continue
     }
 
-    if (options.removeSourceLines && canRemoveSourceLine(line)) {
+    if (options.removeSourceLines) {
       remainingLines ??= originalLines.slice(0, index)
     } else {
       remainingLines?.push(line)
