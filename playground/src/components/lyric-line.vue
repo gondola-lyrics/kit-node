@@ -14,7 +14,7 @@
       <p v-if="instrumental" :class="$style.instrumental">{{ t('result.instrumental') }}</p>
       <div v-else-if="words.length" :class="$style.words">
         <template v-for="(word, index) in words" :key="index">
-          <span v-if="word.type === WordType.SPACE" :class="$style.wordSpace">{{ word.text }}</span>
+          <span v-if="word.type === EnrichedWordType.SPACE" :class="$style.wordSpace">{{ word.text }}</span>
           <span v-else :class="[$style.word, { [$style.emphasized]: word.emphasized }]" :title="word.title">
             <span v-for="(item, itemIndex) in word.rubies" :key="`ruby-${itemIndex}`" :class="$style.wordRuby" :title="item.title">{{
               item.text
@@ -38,7 +38,7 @@
 
       <div v-if="line.annotation?.romans.length || line.annotation?.translations.length" :class="$style.lineAnnotations">
         <p v-for="(item, index) in line.annotation?.romans" :key="`roman-${index}`" :class="$style.lineRoman" :title="item.language">
-          {{ item.text }}
+          {{ getEnrichedLineAnnotationRomanText(item) }}
         </p>
         <p v-for="(item, index) in line.annotation?.translations" :key="`translation-${index}`" :title="item.language">{{ item.text }}</p>
       </div>
@@ -50,9 +50,16 @@
 </template>
 
 <script setup lang="ts">
-import type { Agent, Line, LineBackground, WordAnnotationRoman, WordAnnotationRuby } from '@gondola-lyrics/model/runtime'
+import type { Agent, EnrichedLine, EnrichedLineBackground, EnrichedWordAnnotationRoman, EnrichedWordAnnotationRuby } from '@gondola-lyrics/model'
 
-import { LineType, WordType, getAnnotationItemText, getContentText, resolveLineAgents } from '@gondola-lyrics/model/runtime'
+import {
+  EnrichedLineType,
+  EnrichedWordType,
+  getEnrichedLineAnnotationRomanText,
+  getEnrichedLineContentText,
+  getEnrichedWordAnnotationItemText,
+  resolveLineAgents,
+} from '@gondola-lyrics/model'
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -61,7 +68,7 @@ import { formatRange } from '../lib/format'
 defineOptions({ name: 'LyricLine' })
 
 const props = defineProps<{
-  line: Line | LineBackground
+  line: EnrichedLine | EnrichedLineBackground
   agents: Agent[]
   background?: boolean
 }>()
@@ -69,11 +76,11 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const instrumental = computed(() => {
-  return 'type' in props.line && props.line.type === LineType.INSTRUMENTAL
+  return 'type' in props.line && props.line.type === EnrichedLineType.INSTRUMENTAL
 })
 
 const text = computed(() => {
-  return getContentText(props.line.content)
+  return getEnrichedLineContentText(props.line.content)
 })
 
 const performers = computed(() => {
@@ -92,7 +99,7 @@ const hasMeta = computed(() => {
   return Boolean(props.line.time || props.background || performers.value.length || props.line.languages.length)
 })
 
-const annotation = (item: WordAnnotationRoman | WordAnnotationRuby) => {
+const annotation = (item: EnrichedWordAnnotationRoman | EnrichedWordAnnotationRuby) => {
   const details: string[] = []
   if (item.language) {
     details.push(item.language)
@@ -100,7 +107,7 @@ const annotation = (item: WordAnnotationRoman | WordAnnotationRuby) => {
   if (item.time) {
     details.push(formatRange(item.time))
   }
-  return { text: getAnnotationItemText(item), title: details.join(' · ') }
+  return { text: getEnrichedWordAnnotationItemText(item), title: details.join(' · ') }
 }
 
 const words = computed(() => {

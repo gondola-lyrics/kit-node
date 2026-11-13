@@ -1,7 +1,13 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLyric, Meta, TimeRange } from '@gondola-lyrics/model'
 import type { LrcContent } from './common'
 
-import { LineType, WordType, getAnnotationItemText, getContentText, resolveAnnotationTokenTime } from '@gondola-lyrics/model/runtime'
+import {
+  EnrichedLineType,
+  EnrichedWordType,
+  getEnrichedWordAnnotationItemText,
+  getEnrichedLineContentText,
+  resolveEnrichedWordAnnotationTokenTime,
+} from '@gondola-lyrics/model'
 
 import { formatTime, getLineRomans, lowerTag } from '@root/utils'
 
@@ -57,15 +63,15 @@ const renderWordTag = (start: number, end: number | undefined, options: LrcGener
 /**
  * Word-level lines interleave tags with their text; untimed words stay untagged.
  */
-const renderSyllableText = (line: runtime.Line, options: LrcGenerateOptionsRequired) => {
+const renderSyllableText = (line: EnrichedLine, options: LrcGenerateOptionsRequired) => {
   const content = line.content
   if (!content?.words.length) {
-    return getContentText(content)
+    return getEnrichedLineContentText(content)
   }
 
   return content.words
     .map((word) => {
-      if (word.type === WordType.SPACE) {
+      if (word.type === EnrichedWordType.SPACE) {
         return word.text
       }
       const start = word.time?.start
@@ -80,16 +86,16 @@ const renderSyllableText = (line: runtime.Line, options: LrcGenerateOptionsRequi
     .join('')
 }
 
-const renderWordRomans = (line: runtime.Line, language: string | undefined, options: LrcGenerateOptionsRequired): string => {
-  const pieces: { text: string; time: runtime.TimeRange | undefined }[] = []
+const renderWordRomans = (line: EnrichedLine, language: string | undefined, options: LrcGenerateOptionsRequired): string => {
+  const pieces: { text: string; time: TimeRange | undefined }[] = []
   let spaced = false
   for (const word of line.content?.words ?? []) {
-    if (word.type === WordType.SPACE) {
+    if (word.type === EnrichedWordType.SPACE) {
       spaced = true
       continue
     }
     const roman = word.annotation?.romans.find((item) => lowerTag(item.language) === language)
-    if (!roman || !getAnnotationItemText(roman)) {
+    if (!roman || !getEnrichedWordAnnotationItemText(roman)) {
       continue
     }
     let prefix = pieces.length && spaced ? ' ' : ''
@@ -98,7 +104,7 @@ const renderWordRomans = (line: runtime.Line, language: string | undefined, opti
       if (!token.text) {
         continue
       }
-      pieces.push({ text: prefix + token.text, time: resolveAnnotationTokenTime(token, roman, word) })
+      pieces.push({ text: prefix + token.text, time: resolveEnrichedWordAnnotationTokenTime(token, roman, word) })
       prefix = ''
     }
   }
@@ -119,7 +125,7 @@ const renderWordRomans = (line: runtime.Line, language: string | undefined, opti
     .join('')
 }
 
-const renderMetaRows = (meta: runtime.Meta, options: LrcGenerateOptionsRequired) => {
+const renderMetaRows = (meta: Meta, options: LrcGenerateOptionsRequired) => {
   const rows: string[] = []
 
   for (const title of meta.titles) {
@@ -153,8 +159,8 @@ const renderMetaRows = (meta: runtime.Meta, options: LrcGenerateOptionsRequired)
 /**
  * Returns `undefined` for a line the options leave out, so callers can drop it rather than emit a blank row.
  */
-const renderLineRow = (line: runtime.Line, options: LrcGenerateOptionsRequired, wordLevel: boolean) => {
-  if (line.type === LineType.INSTRUMENTAL && !options.includeInstrumental) {
+const renderLineRow = (line: EnrichedLine, options: LrcGenerateOptionsRequired, wordLevel: boolean) => {
+  if (line.type === EnrichedLineType.INSTRUMENTAL && !options.includeInstrumental) {
     return undefined
   }
 
@@ -162,15 +168,15 @@ const renderLineRow = (line: runtime.Line, options: LrcGenerateOptionsRequired, 
   const time = renderTimeTag(line.time?.start ?? 0, options)
 
   // An instrumental line carries no content, so its timestamp alone marks the gap.
-  if (line.type === LineType.INSTRUMENTAL) {
+  if (line.type === EnrichedLineType.INSTRUMENTAL) {
     return time
   }
 
-  const text = wordLevel && line.content?.words.length ? renderSyllableText(line, options) : getContentText(line.content)
+  const text = wordLevel && line.content?.words.length ? renderSyllableText(line, options) : getEnrichedLineContentText(line.content)
   return `${time}${text}`
 }
 
-const renderAnnotationRows = (lines: runtime.Line[], options: LrcGenerateOptionsRequired, pick: (line: runtime.Line) => { text: string }[]) => {
+const renderAnnotationRows = (lines: EnrichedLine[], options: LrcGenerateOptionsRequired, pick: (line: EnrichedLine) => { text: string }[]) => {
   const rows: string[] = []
 
   for (const line of lines) {
@@ -186,7 +192,7 @@ const renderAnnotationRows = (lines: runtime.Line[], options: LrcGenerateOptions
   return rows
 }
 
-const renderRomanRows = (lines: runtime.Line[], options: LrcGenerateOptionsRequired): string[] => {
+const renderRomanRows = (lines: EnrichedLine[], options: LrcGenerateOptionsRequired): string[] => {
   const rows: string[] = []
   for (const line of lines) {
     const start = line.time?.start
@@ -221,7 +227,7 @@ const joinBlocks = (header: string[], body: string[]) => {
  * Word tags appear only for a word-timed lyric when `wordTiming` is not `none`; otherwise every line stays whole.
  * Word romanizations retain token boundaries; explicit line romanizations take precedence for the same language.
  */
-export const generateLrc = (lyric: runtime.Lyric, options: LrcGenerateOptions = {}): LrcGenerateResult => {
+export const generateLrc = (lyric: EnrichedLyric, options: LrcGenerateOptions = {}): LrcGenerateResult => {
   const resolved = resolveOptions(options)
   const header = resolved.includeMeta && lyric.meta ? renderMetaRows(lyric.meta, resolved) : []
 

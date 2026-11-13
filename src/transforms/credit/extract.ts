@@ -1,15 +1,15 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLyric, EnrichedWord, MetaCredit } from '@gondola-lyrics/model'
 
 import {
-  LineType,
-  Timing,
-  deriveLanguageUsages,
-  getContentText,
-  isWordLevelLine,
+  EnrichedLineType,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  getEnrichedLineContentText,
+  hasEnrichedLineWords,
   makeMeta,
   makeMetaCredit,
   makeText,
-} from '@gondola-lyrics/model/runtime'
+} from '@gondola-lyrics/model'
 
 import { trimRuleWhitespace } from '@root/utils'
 
@@ -48,9 +48,9 @@ interface CreditEntry {
   names: Set<string>
 }
 
-type CreditIndex = Map<runtime.MetaCredit['raw'], Map<runtime.MetaCredit['role'], CreditEntry>>
+type CreditIndex = Map<MetaCredit['raw'], Map<MetaCredit['role'], CreditEntry>>
 
-const createCreditIndex = (credits: readonly runtime.MetaCredit[]): CreditIndex => {
+const createCreditIndex = (credits: readonly MetaCredit[]): CreditIndex => {
   const creditIndex: CreditIndex = new Map()
   for (let index = 0; index < credits.length; index += 1) {
     const credit = credits[index]!
@@ -112,7 +112,7 @@ const readCreditNames = (text: string, separators: readonly string[]): string[] 
   return [...unique]
 }
 
-const hasCreditColon = (word: runtime.Word): boolean => {
+const hasCreditColon = (word: EnrichedWord): boolean => {
   return word.text.includes(':') || word.text.includes('：')
 }
 
@@ -123,7 +123,7 @@ const hasCreditColon = (word: runtime.Word): boolean => {
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
-export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOptions = {}): runtime.Lyric => {
+export const extractCredits = (lyric: EnrichedLyric, options: ExtractCreditsOptions = {}): EnrichedLyric => {
   const separators = prepareCreditSeparators(options.nameSeparators)
 
   const originalCredits = lyric.meta?.credits ?? []
@@ -183,10 +183,10 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
   }
 
   const originalLines = lyric.lines
-  let remainingLines: runtime.Line[] | undefined
+  let remainingLines: EnrichedLine[] | undefined
   for (let index = 0; index < originalLines.length; index += 1) {
     const line = originalLines[index]!
-    if (line.type !== LineType.NORMAL) {
+    if (line.type !== EnrichedLineType.NORMAL) {
       remainingLines?.push(line)
       continue
     }
@@ -198,7 +198,7 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
       remainingLines?.push(line)
       continue
     }
-    const text = getContentText(content)
+    const text = getEnrichedLineContentText(content)
     const colon = text.search(/[:：]/)
     if (colon === -1) {
       remainingLines?.push(line)
@@ -226,12 +226,12 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
   const lines = remainingLines ?? originalLines
 
   let timing = lyric.timing
-  if (removed && timing === Timing.WORD) {
+  if (removed && timing === TimingLevel.WORD) {
     const hasWordLevelContent = lines.some((line) => {
-      return isWordLevelLine(line) || line.backgrounds.some(isWordLevelLine)
+      return hasEnrichedLineWords(line) || line.backgrounds.some(hasEnrichedLineWords)
     })
     if (!hasWordLevelContent) {
-      timing = Timing.LINE
+      timing = TimingLevel.LINE
     }
   }
 
@@ -241,5 +241,5 @@ export const extractCredits = (lyric: runtime.Lyric, options: ExtractCreditsOpti
       : lyric.meta
         ? { ...lyric.meta, credits, unknowns }
         : makeMeta({ credits, unknowns })
-  return { ...lyric, meta, lines, timing, languages: removed ? deriveLanguageUsages(lines) : lyric.languages }
+  return { ...lyric, meta, lines, timing, languageUsages: removed ? deriveEnrichedLanguageUsages(lines) : lyric.languageUsages }
 }

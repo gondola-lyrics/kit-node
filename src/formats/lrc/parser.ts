@@ -1,24 +1,24 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLyric } from '@gondola-lyrics/model'
 import type { ParseResult } from '../result'
 import type { LrcContent } from './common'
 import type { WordPiece } from './utils'
 
 import {
-  LyricStatus,
-  Timing,
-  deriveLanguageUsages,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineInstrumental,
-  makeLineNormal,
-  makeLyric,
+  EnrichedLyricStatus,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineInstrumental,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeMeta,
   makeText,
   makeTimeRange,
   makeUnknownEntry,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import { attachAnnotations, isTime, parseTime } from '@root/utils'
 
@@ -39,7 +39,7 @@ export interface LrcMetaTag {
 }
 
 export interface LrcReadResult {
-  lines: runtime.Line[]
+  lines: EnrichedLine[]
   metaTags: LrcMetaTag[]
 }
 
@@ -54,7 +54,7 @@ export interface LrcReadOptions {
   /**
    * Reports each line with its source precision and zero-based physical row before normalization changes its identity or order.
    */
-  onLine?: (line: runtime.Line, timing: LrcLineTiming, row: number) => void
+  onLine?: (line: EnrichedLine, timing: LrcLineTiming, row: number) => void
   /**
    * Reports metadata with its zero-based physical row so container fields can preserve their relative order.
    */
@@ -237,7 +237,7 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
   const trimmed = text.trim()
   let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
   if (!trimmed) {
-    return makeLineInstrumental({ time: makeTimeRange({ start, end }) })
+    return makeEnrichedLineInstrumental({ time: makeTimeRange({ start, end }) })
   }
 
   const pieces = splitWordTags(text)
@@ -263,25 +263,25 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
 
   const words = drafts.map((draft) => {
     if (draft.space) {
-      return makeWordSpace({ text: draft.text })
+      return makeEnrichedWordSpace({ text: draft.text })
     }
     // A missing start omits the range instead of inventing a word timestamp.
     const time = draft.start === undefined ? undefined : makeTimeRange({ start: draft.start, end: draft.end })
-    return makeWordNormal({ text: draft.text, time })
+    return makeEnrichedWordNormal({ text: draft.text, time })
   })
 
   const time = makeTimeRange({ start, end })
-  const content = wordTimed ? makeLineContentWords(words) : makeLineContentText(trimmed)
+  const content = wordTimed ? makeEnrichedLineContentWords(words) : makeEnrichedLineContentText(trimmed)
 
-  return makeLineNormal({ time, content })
+  return makeEnrichedLineNormal({ time, content })
 }
 
 /**
  * Builds one line per timed row, so an annotation track reuses the original text's reading unchanged.
  * Empty timed rows become instrumental lines bounded by the next timestamp when one is usable.
  */
-const readLines = (timed: TimedLine[], options: LrcReadOptions): runtime.Line[] => {
-  const lines: runtime.Line[] = []
+const readLines = (timed: TimedLine[], options: LrcReadOptions): EnrichedLine[] => {
+  const lines: EnrichedLine[] = []
 
   for (const [index, item] of timed.entries()) {
     const next = timed[index + 1]?.start
@@ -365,22 +365,22 @@ export const readLrcMetaTags = (tags: LrcMetaTag[]) => {
   return meta
 }
 
-const parseLrcText = (text: string): runtime.Lyric => {
+const parseLrcText = (text: string): EnrichedLyric => {
   const { lines, metaTags } = readLrc(text)
   const meta = readLrcMetaTags(metaTags)
 
   if (!lines.length) {
-    return makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta })
+    return makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta })
   }
 
   const wordTimed = lines.some((line) => (line.content?.words.length ?? 0) > 0)
 
-  return makeLyric({
+  return makeEnrichedLyric({
     format: FORMAT,
-    status: LyricStatus.VALID,
-    timing: wordTimed ? Timing.WORD : Timing.LINE,
+    status: EnrichedLyricStatus.VALID,
+    timing: wordTimed ? TimingLevel.WORD : TimingLevel.LINE,
     meta,
-    languages: deriveLanguageUsages(lines),
+    languageUsages: deriveEnrichedLanguageUsages(lines),
     lines,
   })
 }
@@ -397,7 +397,7 @@ export const parseLrc = (input: string | LrcParseInput, options: LrcParseOptions
   const source = readLrcContent(input) ?? { original: '' }
   const lyric = parseLrcText(source.original)
 
-  if (lyric.status === LyricStatus.INVALID) {
+  if (lyric.status === EnrichedLyricStatus.INVALID) {
     return finalizeLyric(lyric)
   }
 

@@ -1,4 +1,4 @@
-import type { TimeRange } from '@gondola-lyrics/model/runtime'
+import type { TimeRange } from '@gondola-lyrics/model'
 
 /**
  * Missing time bounds remain unknown rather than appearing at the start of the song.

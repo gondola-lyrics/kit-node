@@ -2,7 +2,7 @@ import type { LyricFormat } from '@gondola-lyrics/kit'
 import type { PlaygroundForm, PlaygroundResult } from '../lib/playground'
 import type { MessageKey } from './useI18n'
 
-import { LyricStatus, encode, validateLyric } from '@gondola-lyrics/model/runtime'
+import { EnrichedLyricStatus, encodeEnrichedLyric, validateEnrichedLyric } from '@gondola-lyrics/model'
 import { nextTick, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue'
 
 import {
@@ -214,7 +214,7 @@ export const useParser = () => {
         return
       }
       // An explicit mode must name the format when the source itself belongs to another one.
-      if (input.mode !== 'auto' && parsed.lyric.status !== LyricStatus.VALID) {
+      if (input.mode !== 'auto' && parsed.lyric.status !== EnrichedLyricStatus.VALID) {
         const detected = detectFormat(content)
         if (detected && detected !== input.mode) {
           resetResult()
@@ -253,11 +253,11 @@ export const useParser = () => {
       if (emphasis.enabled) {
         lyric = deriveWordEmphasis(lyric, emphasis)
       }
-      const diagnostics = lyric === parsed.lyric ? parsed.diagnostics : validateLyric(lyric)
+      const diagnostics = lyric === parsed.lyric ? parsed.diagnostics : validateEnrichedLyric(lyric)
       let encodedBytes: number | null = null
       let encodingError = ''
       try {
-        encodedBytes = encode(lyric).byteLength
+        encodedBytes = encodeEnrichedLyric(lyric).byteLength
       } catch (cause) {
         // Encoding failure must not hide the invalid model that the user is inspecting.
         encodingError = cause instanceof Error ? cause.message : String(cause)

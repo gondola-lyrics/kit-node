@@ -1,4 +1,4 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLyric } from '@gondola-lyrics/model'
 import type { LyricFormat } from './format'
 import type { KrcParseInput } from './krc'
 import type { KwrcParseInput } from './kwrc'
@@ -82,7 +82,7 @@ interface GenerateResults {
 export type GenerateFormat = keyof GenerateOptions
 
 const GENERATORS: {
-  [Target in GenerateFormat]: (lyric: runtime.Lyric, options: GenerateOptions[Target]) => GenerateResults[Target]
+  [Target in GenerateFormat]: (lyric: EnrichedLyric, options: GenerateOptions[Target]) => GenerateResults[Target]
 } = {
   lrc: generateLrc,
   ttml: generateTtml,
@@ -95,7 +95,7 @@ const GENERATORS: {
  * An unknown target returns `null`.
  */
 export const generate = <Target extends GenerateFormat>(
-  lyric: runtime.Lyric,
+  lyric: EnrichedLyric,
   target: Target,
   options: GenerateOptions[Target] = {},
 ): GenerateResults[Target] | null => {

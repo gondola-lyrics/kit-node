@@ -1,6 +1,6 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLyric } from '@gondola-lyrics/model'
 
-import { LineType, Timing, deriveLanguageUsages, getContentText, isWordLevelLine } from '@gondola-lyrics/model/runtime'
+import { EnrichedLineType, TimingLevel, deriveEnrichedLanguageUsages, getEnrichedLineContentText, hasEnrichedLineWords } from '@gondola-lyrics/model'
 
 import { matchNonLyricCategory, selectNonLyricGroups } from './rules'
 
@@ -30,7 +30,7 @@ const toMusicInfoMatchText = (text: string): string => {
     .replace(/[A-Z]+/g, (run) => run.toLowerCase())
 }
 
-const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<RemoveNonLyricLinesOptions['musicInfo']>) => {
+const findFirstMusicInfoLine = (lyric: EnrichedLyric, musicInfo: NonNullable<RemoveNonLyricLinesOptions['musicInfo']>) => {
   const titles = (musicInfo.titles ?? []).map(toMusicInfoMatchText).filter(Boolean)
   const artists = (musicInfo.artists ?? []).map(toMusicInfoMatchText).filter(Boolean)
   if (!titles.length || !artists.length) {
@@ -38,13 +38,13 @@ const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<Rem
   }
 
   const index = lyric.lines.findIndex((line) => {
-    return line.type === LineType.NORMAL && !!getContentText(line.content).trim()
+    return line.type === EnrichedLineType.NORMAL && !!getEnrichedLineContentText(line.content).trim()
   })
   if (index === -1) {
     return -1
   }
 
-  const parts = getContentText(lyric.lines[index]!.content).trim().split(' - ')
+  const parts = getEnrichedLineContentText(lyric.lines[index]!.content).trim().split(' - ')
   if (parts.length !== 2) {
     return -1
   }
@@ -68,7 +68,7 @@ const findFirstMusicInfoLine = (lyric: runtime.Lyric, musicInfo: NonNullable<Rem
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
-export const removeNonLyricLines = (lyric: runtime.Lyric, options: RemoveNonLyricLinesOptions = {}): runtime.Lyric => {
+export const removeNonLyricLines = (lyric: EnrichedLyric, options: RemoveNonLyricLinesOptions = {}): EnrichedLyric => {
   const groups = selectNonLyricGroups(options.categories)
   const musicInfoIndex = options.musicInfo ? findFirstMusicInfoLine(lyric, options.musicInfo) : -1
   if (!groups.length && musicInfoIndex === -1) {
@@ -79,7 +79,7 @@ export const removeNonLyricLines = (lyric: runtime.Lyric, options: RemoveNonLyri
     if (index === musicInfoIndex) {
       return false
     }
-    return line.type !== LineType.NORMAL || matchNonLyricCategory(getContentText(line.content), groups) === undefined
+    return line.type !== EnrichedLineType.NORMAL || matchNonLyricCategory(getEnrichedLineContentText(line.content), groups) === undefined
   })
 
   if (lines.length === lyric.lines.length) {
@@ -87,13 +87,13 @@ export const removeNonLyricLines = (lyric: runtime.Lyric, options: RemoveNonLyri
   }
 
   let timing = lyric.timing
-  if (timing === Timing.WORD) {
+  if (timing === TimingLevel.WORD) {
     const hasWordLevelContent = lines.some((line) => {
-      return isWordLevelLine(line) || line.backgrounds.some(isWordLevelLine)
+      return hasEnrichedLineWords(line) || line.backgrounds.some(hasEnrichedLineWords)
     })
     if (!hasWordLevelContent) {
-      timing = Timing.LINE
+      timing = TimingLevel.LINE
     }
   }
-  return { ...lyric, lines, timing, languages: deriveLanguageUsages(lines) }
+  return { ...lyric, lines, timing, languageUsages: deriveEnrichedLanguageUsages(lines) }
 }

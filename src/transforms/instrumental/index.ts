@@ -1,6 +1,6 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLyric, TimeRange } from '@gondola-lyrics/model'
 
-import { LineType, Timing, makeLineInstrumental, makeTimeRange, validateTimeRange } from '@gondola-lyrics/model/runtime'
+import { EnrichedLineType, TimingLevel, makeEnrichedLineInstrumental, makeTimeRange, validateTimeRange } from '@gondola-lyrics/model'
 
 export interface InsertInstrumentalLinesOptions {
   /**
@@ -39,7 +39,7 @@ const readEndTime = (value: number | undefined): number | undefined => {
   return value
 }
 
-const compareTimeRanges = (left: runtime.TimeRange | undefined, right: runtime.TimeRange | undefined): number => {
+const compareTimeRanges = (left: TimeRange | undefined, right: TimeRange | undefined): number => {
   const leftStart = left?.start ?? Infinity
   const rightStart = right?.start ?? Infinity
   if (leftStart !== rightStart) {
@@ -51,11 +51,11 @@ const compareTimeRanges = (left: runtime.TimeRange | undefined, right: runtime.T
   return leftEnd === rightEnd ? 0 : leftEnd - rightEnd
 }
 
-const readOccupiedTimeline = (lyric: runtime.Lyric) => {
-  const ranges: runtime.TimeRange[] = []
+const readOccupiedTimeline = (lyric: EnrichedLyric) => {
+  const ranges: TimeRange[] = []
   let firstSungStart = Infinity
 
-  const append = (time: runtime.TimeRange | undefined, sung: boolean): boolean => {
+  const append = (time: TimeRange | undefined, sung: boolean): boolean => {
     if (!time || validateTimeRange(time).length) {
       return false
     }
@@ -72,7 +72,7 @@ const readOccupiedTimeline = (lyric: runtime.Lyric) => {
   }
 
   for (const line of lyric.lines) {
-    if (!append(line.time, line.type === LineType.NORMAL)) {
+    if (!append(line.time, line.type === EnrichedLineType.NORMAL)) {
       return undefined
     }
     for (const background of line.backgrounds) {
@@ -86,11 +86,11 @@ const readOccupiedTimeline = (lyric: runtime.Lyric) => {
   return { ranges, firstSungStart }
 }
 
-const compareLineTimes = (left: runtime.Line, right: runtime.Line): number => {
+const compareLineTimes = (left: EnrichedLine, right: EnrichedLine): number => {
   return compareTimeRanges(left.time, right.time)
 }
 
-const mergeLines = (lines: runtime.Line[], inserted: runtime.Line[]): runtime.Line[] => {
+const mergeLines = (lines: EnrichedLine[], inserted: EnrichedLine[]): EnrichedLine[] => {
   let source = lines
   for (const [index, line] of lines.entries()) {
     const previous = lines[index - 1]
@@ -100,7 +100,7 @@ const mergeLines = (lines: runtime.Line[], inserted: runtime.Line[]): runtime.Li
     }
   }
 
-  const merged: runtime.Line[] = []
+  const merged: EnrichedLine[] = []
   let nextIndex = 0
   for (const line of source) {
     let next = inserted[nextIndex]
@@ -123,11 +123,11 @@ const mergeLines = (lines: runtime.Line[], inserted: runtime.Line[]): runtime.Li
  *
  * @returns The input when unchanged, or a new lyric and lines array sharing existing nodes.
  */
-export const insertInstrumentalLines = (lyric: runtime.Lyric, options: InsertInstrumentalLinesOptions = {}): runtime.Lyric => {
+export const insertInstrumentalLines = (lyric: EnrichedLyric, options: InsertInstrumentalLinesOptions = {}): EnrichedLyric => {
   const minDuration = readMinimum(options.minDuration, 10000, 'minDuration')
   const minIntroDuration = readMinimum(options.minIntroDuration, 5000, 'minIntroDuration')
   const endTime = readEndTime(options.endTime)
-  if ((lyric.timing !== Timing.LINE && lyric.timing !== Timing.WORD) || !lyric.lines.length) {
+  if ((lyric.timing !== TimingLevel.LINE && lyric.timing !== TimingLevel.WORD) || !lyric.lines.length) {
     return lyric
   }
 
@@ -136,13 +136,13 @@ export const insertInstrumentalLines = (lyric: runtime.Lyric, options: InsertIns
     return lyric
   }
 
-  const inserted: runtime.Line[] = []
+  const inserted: EnrichedLine[] = []
   let coveredEnd = 0
 
   const appendGap = (end: number, minimum: number): void => {
     const duration = end - coveredEnd
     if (duration > 0 && duration >= minimum) {
-      inserted.push(makeLineInstrumental({ time: makeTimeRange({ start: coveredEnd, end }) }))
+      inserted.push(makeEnrichedLineInstrumental({ time: makeTimeRange({ start: coveredEnd, end }) }))
     }
   }
 

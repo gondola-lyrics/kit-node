@@ -21,7 +21,7 @@ npm install @gondola-lyrics/kit
 > This package is ESM-only.
 > In your TS config, use `module: node20` / `module: nodenext` / `moduleResolution: bundler`.
 
-Parsing returns a canonical `runtime.Lyric` together with the diagnostics it produced, so the result is ready to hand to a player without a second conversion step.
+Parsing returns a canonical `EnrichedLyric` together with the diagnostics it produced, so the result is ready to hand to a player without a second conversion step.
 
 ### Parse
 
@@ -37,7 +37,7 @@ parsed?.diagnostics // => []
 
 // `parse` recognizes the format and returns `null` when it cannot.
 // `parseLrc` takes a known format and never returns `null`, so an unreadable source only carries `status: INVALID`.
-parseLrc('no timestamps here').lyric.status // => LyricStatus.INVALID
+parseLrc('no timestamps here').lyric.status // => EnrichedLyricStatus.INVALID
 
 // LRC keeps translations and romanizations in separate files, attached here by timestamp.
 const annotated = parseLrc({
@@ -50,7 +50,7 @@ const annotated = parseLrc({
 })
 
 annotated.lyric.lines[0]?.annotation?.translations[0].text // => '就像第一次'
-annotated.lyric.lines[0]?.annotation?.romans[0].text // => 'raiku za fasuto taimu'
+annotated.lyric.lines[0]?.annotation?.romans[0].content?.text // => 'raiku za fasuto taimu'
 
 // An exact timestamp match is assigned before any fuzzy one, and rows matching no line are dropped.
 // A drifting track attaches within a tolerance, where the nearest unclaimed line wins.
@@ -103,9 +103,9 @@ The kit does not invent diagnostics. It canonicalizes the lyric and hands back e
 const { lyric, diagnostics } = parseLrc(source)
 
 // The same list, computed by the kit on the way out.
-import { validateLyric } from '@gondola-lyrics/model/runtime'
+import { validateEnrichedLyric } from '@gondola-lyrics/model'
 
-validateLyric(lyric) // deep-equals `diagnostics`
+validateEnrichedLyric(lyric) // deep-equals `diagnostics`
 ```
 
 ### Entries

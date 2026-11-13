@@ -1,14 +1,16 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLineAnnotation, EnrichedLineBackground, EnrichedLineContent, EnrichedLyric, EnrichedWord } from '@gondola-lyrics/model'
 import type { InsertSpacesRule } from './constants'
 
 import {
-  LineType,
-  makeLineAnnotationRoman,
-  makeLineAnnotationTranslation,
-  makeLineContentText,
-  makeLineContentWords,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  EnrichedLineType,
+  getEnrichedLineAnnotationRomanText,
+  makeEnrichedLineAnnotationRoman,
+  makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import { mapShared } from '@root/utils'
 
@@ -35,9 +37,9 @@ export interface InsertSpacesOptions {
  * language and annotation while the inserted spaces become their own words.
  * A word whose characters stay adjacent in the rewrite is kept whole, so only a word the space actually cuts is split.
  */
-const alignWords = (words: runtime.Word[], text: string) => {
+const alignWords = (words: EnrichedWord[], text: string) => {
   const source = words.filter(isNormalWord)
-  const result: runtime.Word[] = []
+  const result: EnrichedWord[] = []
   let cursor = 0
 
   const takeSpaces = () => {
@@ -52,7 +54,7 @@ const alignWords = (words: runtime.Word[], text: string) => {
   for (const word of source) {
     const spaces = takeSpaces()
     if (spaces) {
-      result.push(makeWordSpace({ text: spaces }))
+      result.push(makeEnrichedWordSpace({ text: spaces }))
     }
 
     // A word the rewrite left intact keeps its identity, including any annotation and emphasis.
@@ -83,13 +85,13 @@ const alignWords = (words: runtime.Word[], text: string) => {
         // Nothing separates the pieces, so the rewrite changed more than spacing.
         return undefined
       }
-      result.push(makeWordSpace({ text: split }))
+      result.push(makeEnrichedWordSpace({ text: split }))
     }
   }
 
   const tail = takeSpaces()
   if (tail) {
-    result.push(makeWordSpace({ text: tail }))
+    result.push(makeEnrichedWordSpace({ text: tail }))
   }
 
   // A leftover character means the rewrite changed something other than spacing, so the caller keeps the original words.
@@ -102,7 +104,7 @@ const alignWords = (words: runtime.Word[], text: string) => {
 /**
  * Applies the rules to a word-level content, keeping it unchanged when the alignment fails.
  */
-const applyToWords = (content: runtime.LineContent, rules: Set<InsertSpacesRule>) => {
+const applyToWords = (content: EnrichedLineContent, rules: Set<InsertSpacesRule>) => {
   const text = content.words.map((word) => word.text).join('')
   const rewritten = insertSpaces(text, rules)
   if (rewritten === text) {
@@ -113,25 +115,25 @@ const applyToWords = (content: runtime.LineContent, rules: Set<InsertSpacesRule>
   if (!words) {
     return content
   }
-  return words.length ? makeLineContentWords(words) : undefined
+  return words.length ? makeEnrichedLineContentWords(words) : undefined
 }
 
 /**
  * Applies the rules to a plain-text content, dropping a line the rules would leave empty.
  */
-const applyToText = (content: runtime.LineContent, rules: Set<InsertSpacesRule>) => {
+const applyToText = (content: EnrichedLineContent, rules: Set<InsertSpacesRule>) => {
   const text = content.text ?? ''
   const rewritten = insertSpaces(text, rules)
   if (rewritten === text) {
     return content
   }
-  return rewritten ? makeLineContentText(rewritten) : undefined
+  return rewritten ? makeEnrichedLineContentText(rewritten) : undefined
 }
 
 /**
  * Applies the rules to one content by the shape it carries.
  */
-const applyToContent = (content: runtime.LineContent | undefined, rules: Set<InsertSpacesRule>) => {
+const applyToContent = (content: EnrichedLineContent | undefined, rules: Set<InsertSpacesRule>) => {
   if (!content) {
     return content
   }
@@ -141,19 +143,20 @@ const applyToContent = (content: runtime.LineContent | undefined, rules: Set<Ins
 /**
  * Applies the rules to the line annotation, keeping the entries they leave untouched.
  */
-const applyToAnnotation = (annotation: runtime.LineAnnotation | undefined, rules: Set<InsertSpacesRule>) => {
+const applyToAnnotation = (annotation: EnrichedLineAnnotation | undefined, rules: Set<InsertSpacesRule>) => {
   if (!annotation) {
     return annotation
   }
 
   let changed = false
   const romans = annotation.romans.map((item) => {
-    const text = insertSpaces(item.text, rules)
-    if (text === item.text) {
+    const original = getEnrichedLineAnnotationRomanText(item)
+    const text = insertSpaces(original, rules)
+    if (text === original) {
       return item
     }
     changed = true
-    return makeLineAnnotationRoman({ ...item, text })
+    return makeEnrichedLineAnnotationRoman({ ...item, content: makeEnrichedLineAnnotationRomanContentText(text) })
   })
   const translations = annotation.translations.map((item) => {
     const text = insertSpaces(item.text, rules)
@@ -161,7 +164,7 @@ const applyToAnnotation = (annotation: runtime.LineAnnotation | undefined, rules
       return item
     }
     changed = true
-    return makeLineAnnotationTranslation({ ...item, text })
+    return makeEnrichedLineAnnotationTranslation({ ...item, text })
   })
   return changed ? { ...annotation, romans, translations } : annotation
 }
@@ -175,11 +178,11 @@ const applyToAnnotation = (annotation: runtime.LineAnnotation | undefined, rules
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
-export const insertSpacesInLines = (lyric: runtime.Lyric, options: InsertSpacesOptions = {}): runtime.Lyric => {
+export const insertSpacesInLines = (lyric: EnrichedLyric, options: InsertSpacesOptions = {}): EnrichedLyric => {
   const rules = resolveRules(options.rules)
   const annotations = options.annotations ?? true
 
-  const applyToBackground = (background: runtime.LineBackground): runtime.LineBackground => {
+  const applyToBackground = (background: EnrichedLineBackground): EnrichedLineBackground => {
     const content = applyToContent(background.content, rules)
     const annotation = annotations ? applyToAnnotation(background.annotation, rules) : background.annotation
     if (content === background.content && annotation === background.annotation) {
@@ -189,7 +192,7 @@ export const insertSpacesInLines = (lyric: runtime.Lyric, options: InsertSpacesO
   }
 
   const lines = mapShared(lyric.lines, (line) => {
-    if (line.type !== LineType.NORMAL) {
+    if (line.type !== EnrichedLineType.NORMAL) {
       return line
     }
 

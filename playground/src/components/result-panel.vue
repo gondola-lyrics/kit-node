@@ -101,7 +101,7 @@ import type { MessageKey } from '../composables/useI18n'
 import type { PlaygroundOptions } from '../lib/options'
 import type { PlaygroundResult, ResultView } from '../lib/playground'
 
-import { LyricStatus, Timing, WordType } from '@gondola-lyrics/model/runtime'
+import { EnrichedLyricStatus, EnrichedWordType, TimingLevel } from '@gondola-lyrics/model'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 
 import { generate } from '@gondola-lyrics/kit'
@@ -168,7 +168,7 @@ const output = computed(() => {
 })
 
 const invalid = computed(() => {
-  return !!props.result && props.result.lyric.status !== LyricStatus.VALID
+  return !!props.result && props.result.lyric.status !== EnrichedLyricStatus.VALID
 })
 const timingSummary = computed(() => {
   const lyric = props.result?.lyric
@@ -176,17 +176,17 @@ const timingSummary = computed(() => {
     return ''
   }
   const label =
-    lyric.timing === Timing.WORD
+    lyric.timing === TimingLevel.WORD
       ? 'result.wordTiming'
-      : lyric.timing === Timing.LINE
+      : lyric.timing === TimingLevel.LINE
         ? 'result.lineTiming'
-        : lyric.timing === Timing.NONE
+        : lyric.timing === TimingLevel.NONE
           ? 'result.noTiming'
           : 'result.unspecified'
   let words = 0
   for (const line of lyric.lines) {
     for (const word of line.content?.words ?? []) {
-      if (word.type === WordType.NORMAL) {
+      if (word.type === EnrichedWordType.NORMAL) {
         words += 1
       }
     }

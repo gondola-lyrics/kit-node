@@ -1,17 +1,29 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type {
+  EnrichedLine,
+  EnrichedLineAnnotation,
+  EnrichedLineAnnotationRoman,
+  EnrichedLineAnnotationTranslation,
+  EnrichedLineBackground,
+  EnrichedLineContent,
+  EnrichedLyric,
+  EnrichedWord,
+  TimeRange,
+} from '@gondola-lyrics/model'
 
 import {
-  LineType,
-  Timing,
-  deriveLanguageUsages,
-  makeLineAnnotation,
-  makeLineAnnotationRoman,
-  makeLineAnnotationTranslation,
-  makeLineBackground,
-  makeLineContentText,
-  makeLineContentWords,
+  EnrichedLineType,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  getEnrichedLineAnnotationRomanText,
+  makeEnrichedLineAnnotation,
+  makeEnrichedLineAnnotationRoman,
+  makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedLineBackground,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
   makeTimeRange,
-} from '@gondola-lyrics/model/runtime'
+} from '@gondola-lyrics/model'
 
 import { isCloseBracket, isNormalWord, isOpenBracket, readLineText, readTimeRange } from './utils'
 
@@ -100,11 +112,11 @@ const splitText = (text: string) => {
  * An unclosed bracket never became a run, so its text returns to the line it came from.
  * An empty pair yields no run, since a background line must carry text.
  */
-const splitWords = (words: runtime.Word[]) => {
-  const main: runtime.Word[] = []
-  const runs: runtime.Word[][] = []
-  let current: runtime.Word[] = []
-  let opened: runtime.Word | undefined
+const splitWords = (words: EnrichedWord[]) => {
+  const main: EnrichedWord[] = []
+  const runs: EnrichedWord[][] = []
+  let current: EnrichedWord[] = []
+  let opened: EnrichedWord | undefined
   let depth = 0
 
   for (const word of words) {
@@ -172,7 +184,7 @@ const splitWords = (words: runtime.Word[]) => {
   }
 }
 
-const mapSpan = (range: runtime.TimeRange, length: number, run: TextRun) => {
+const mapSpan = (range: TimeRange, length: number, run: TextRun) => {
   if (range.end === undefined || !length) {
     return makeTimeRange({ start: range.start, end: range.end })
   }
@@ -185,7 +197,7 @@ const mapSpan = (range: runtime.TimeRange, length: number, run: TextRun) => {
 /**
  * Falls back to the line's own range when no word carries a time, so a run still gets a range.
  */
-const readWordRange = (words: runtime.Word[], fallback: runtime.TimeRange) => {
+const readWordRange = (words: EnrichedWord[], fallback: TimeRange) => {
   const timed = words.filter((word) => {
     return isNormalWord(word) && !!word.time
   })
@@ -200,7 +212,7 @@ const readWordRange = (words: runtime.Word[], fallback: runtime.TimeRange) => {
 /**
  * A background may start before its line but not finish after it, so the line grows to the furthest stated end.
  */
-const attach = (line: runtime.Line, backgrounds: runtime.LineBackground[]) => {
+const attach = (line: EnrichedLine, backgrounds: EnrichedLineBackground[]) => {
   const merged = [...line.backgrounds, ...backgrounds]
   merged.sort((left, right) => {
     const leftStart = left.time?.start ?? 0
@@ -225,7 +237,7 @@ const attach = (line: runtime.Line, backgrounds: runtime.LineBackground[]) => {
  * A closed line cannot hold an open background, so it stops where the line does.
  * On the last line the timeline itself ends unknown, so an open background leaves the line open too.
  */
-const boundOpenBackgrounds = (lines: runtime.Line[]) => {
+const boundOpenBackgrounds = (lines: EnrichedLine[]) => {
   const last = lines.length - 1
   return lines.map((line, index) => {
     const open = line.backgrounds.filter((background) => {
@@ -257,16 +269,16 @@ const boundOpenBackgrounds = (lines: runtime.Line[]) => {
 /**
  * Words are kept only where the caller says the lyric is word-timed, since the other timings forbid them.
  */
-const makeBackground = (line: runtime.Line, words: runtime.Word[], text: string, time: runtime.TimeRange | undefined, wordLevel: boolean) => {
-  return makeLineBackground({
+const makeBackground = (line: EnrichedLine, words: EnrichedWord[], text: string, time: TimeRange | undefined, wordLevel: boolean) => {
+  return makeEnrichedLineBackground({
     time,
-    agents: [...line.agents],
+    agentIds: [...line.agentIds],
     languages: [...line.languages],
-    content: wordLevel && words.length ? makeLineContentWords(words) : makeLineContentText(text),
+    content: wordLevel && words.length ? makeEnrichedLineContentWords(words) : makeEnrichedLineContentText(text),
   })
 }
 
-const readBackgrounds = (line: runtime.Line, wordLevel: boolean) => {
+const readBackgrounds = (line: EnrichedLine, wordLevel: boolean) => {
   const content = line.content
   if (!content) {
     return []
@@ -294,18 +306,19 @@ const readBackgrounds = (line: runtime.Line, wordLevel: boolean) => {
  * An entry without brackets stays on the line, since only the bracketed part describes a background.
  * The line's annotation is rebuilt rather than edited, so the input lyric stays untouched.
  */
-const splitAnnotation = (annotation: runtime.LineAnnotation | undefined, backgrounds: runtime.LineBackground[]) => {
+const splitAnnotation = (annotation: EnrichedLineAnnotation | undefined, backgrounds: EnrichedLineBackground[]) => {
   if (!annotation || !backgrounds.length) {
     return annotation
   }
 
-  const move = <Item extends runtime.LineAnnotationRoman | runtime.LineAnnotationTranslation>(
+  const move = <Item extends EnrichedLineAnnotationRoman | EnrichedLineAnnotationTranslation>(
     items: Item[],
+    read: (item: Item) => string,
     rebuild: (item: Item, text: string) => Item,
-    push: (background: runtime.LineBackground, text: string, language: string | undefined) => void,
+    push: (background: EnrichedLineBackground, text: string, language: string | undefined) => void,
   ) => {
     return items.map((item) => {
-      const { main, runs } = splitText(item.text)
+      const { main, runs } = splitText(read(item))
       if (!runs.length) {
         return item
       }
@@ -321,27 +334,29 @@ const splitAnnotation = (annotation: runtime.LineAnnotation | undefined, backgro
 
   const romans = move(
     annotation.romans,
-    (item, text) => makeLineAnnotationRoman({ ...item, text }),
+    getEnrichedLineAnnotationRomanText,
+    (item, text) => makeEnrichedLineAnnotationRoman({ ...item, content: makeEnrichedLineAnnotationRomanContentText(text) }),
     (background, text, language) => {
-      background.annotation ??= makeLineAnnotation()
-      background.annotation.romans.push(makeLineAnnotationRoman({ text, language }))
+      background.annotation ??= makeEnrichedLineAnnotation()
+      background.annotation.romans.push(makeEnrichedLineAnnotationRoman({ content: makeEnrichedLineAnnotationRomanContentText(text), language }))
     },
   )
   const translations = move(
     annotation.translations,
-    (item, text) => makeLineAnnotationTranslation({ ...item, text }),
+    (item) => item.text,
+    (item, text) => makeEnrichedLineAnnotationTranslation({ ...item, text }),
     (background, text, language) => {
-      background.annotation ??= makeLineAnnotation()
-      background.annotation.translations.push(makeLineAnnotationTranslation({ text, language }))
+      background.annotation ??= makeEnrichedLineAnnotation()
+      background.annotation.translations.push(makeEnrichedLineAnnotationTranslation({ text, language }))
     },
   )
-  return makeLineAnnotation({ ...annotation, romans, translations })
+  return makeEnrichedLineAnnotation({ ...annotation, romans, translations })
 }
 
 /**
  * Words survive only where the lyric is word-timed, since the other timings forbid them.
  */
-const toBackground = (line: runtime.Line, time: runtime.TimeRange | undefined, wordLevel: boolean) => {
+const toBackground = (line: EnrichedLine, time: TimeRange | undefined, wordLevel: boolean) => {
   const content = line.content
   if (!content) {
     return undefined
@@ -350,17 +365,17 @@ const toBackground = (line: runtime.Line, time: runtime.TimeRange | undefined, w
   if (!text) {
     return undefined
   }
-  return makeLineBackground({
+  return makeEnrichedLineBackground({
     time,
-    agents: [...line.agents],
+    agentIds: [...line.agentIds],
     languages: [...line.languages],
-    content: wordLevel && content.words.length ? content : makeLineContentText(text),
+    content: wordLevel && content.words.length ? content : makeEnrichedLineContentText(text),
     annotation: line.annotation,
   })
 }
 
-const isBracketOnlyLine = (line: runtime.Line | undefined) => {
-  if (!line || line.type !== LineType.NORMAL) {
+const isBracketOnlyLine = (line: EnrichedLine | undefined) => {
+  if (!line || line.type !== EnrichedLineType.NORMAL) {
     return false
   }
   const { main, runs } = splitText(readLineText(line))
@@ -370,10 +385,10 @@ const isBracketOnlyLine = (line: runtime.Line | undefined) => {
 /**
  * A line that held nothing but brackets has no text of its own to sing, so it cannot be the one a background accompanies.
  */
-const findParentIndex = (lines: runtime.Line[]) => {
+const findParentIndex = (lines: EnrichedLine[]) => {
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index]
-    if (line?.type === LineType.NORMAL && !isBracketOnlyLine(line)) {
+    if (line?.type === EnrichedLineType.NORMAL && !isBracketOnlyLine(line)) {
       return index
     }
   }
@@ -383,8 +398,8 @@ const findParentIndex = (lines: runtime.Line[]) => {
 /**
  * Both source lines go, since neither holds anything left to sing, and the joined range spans both.
  */
-const joinCrossLine = (lines: runtime.Line[], wordLevel: boolean) => {
-  const result: runtime.Line[] = []
+const joinCrossLine = (lines: EnrichedLine[], wordLevel: boolean) => {
+  const result: EnrichedLine[] = []
   let changed = false
   let skip = false
 
@@ -396,7 +411,7 @@ const joinCrossLine = (lines: runtime.Line[], wordLevel: boolean) => {
 
     const next = lines[index + 1]
     const parentIndex = findParentIndex(result)
-    if (line.type === LineType.NORMAL && next?.type === LineType.NORMAL && parentIndex !== -1) {
+    if (line.type === EnrichedLineType.NORMAL && next?.type === EnrichedLineType.NORMAL && parentIndex !== -1) {
       const opened = splitText(readLineText(line))
       const closed = splitText(readLineText(next))
       const opens = !opened.runs.length && isOpenBracket(opened.main.charAt(0))
@@ -405,7 +420,7 @@ const joinCrossLine = (lines: runtime.Line[], wordLevel: boolean) => {
         const start = line.time?.start
         const end = next.time?.end ?? next.time?.start
         const background = toBackground(
-          { ...line, content: makeLineContentText(opened.main.slice(1) + closed.main.slice(0, -1)) },
+          { ...line, content: makeEnrichedLineContentText(opened.main.slice(1) + closed.main.slice(0, -1)) },
           start === undefined ? undefined : makeTimeRange({ start, end }),
           wordLevel,
         )
@@ -423,13 +438,13 @@ const joinCrossLine = (lines: runtime.Line[], wordLevel: boolean) => {
   return { lines: result, changed }
 }
 
-const stripRuns = (content: runtime.LineContent): runtime.LineContent | undefined => {
+const stripRuns = (content: EnrichedLineContent): EnrichedLineContent | undefined => {
   if (content.words.length) {
     const { main } = splitWords(content.words)
-    return main.length ? makeLineContentWords(main) : undefined
+    return main.length ? makeEnrichedLineContentWords(main) : undefined
   }
   const { main } = splitText(content.text ?? '')
-  return main ? makeLineContentText(main) : undefined
+  return main ? makeEnrichedLineContentText(main) : undefined
 }
 
 /**
@@ -441,7 +456,7 @@ const stripRuns = (content: runtime.LineContent): runtime.LineContent | undefine
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
-export const extractBackgroundLines = (lyric: runtime.Lyric, options: ExtractBackgroundLinesOptions = {}): runtime.Lyric => {
+export const extractBackgroundLines = (lyric: EnrichedLyric, options: ExtractBackgroundLinesOptions = {}): EnrichedLyric => {
   const fullLine = options.fullLine ?? true
   const inLine = options.inLine ?? true
   const crossLine = options.crossLine ?? true
@@ -449,13 +464,13 @@ export const extractBackgroundLines = (lyric: runtime.Lyric, options: ExtractBac
     return lyric
   }
 
-  const wordLevel = lyric.timing === Timing.WORD
+  const wordLevel = lyric.timing === TimingLevel.WORD
   const joined = crossLine ? joinCrossLine(lyric.lines, wordLevel) : { lines: lyric.lines, changed: false }
-  const result: runtime.Line[] = []
+  const result: EnrichedLine[] = []
   let changed = joined.changed
 
   for (const line of joined.lines) {
-    if (line.type !== LineType.NORMAL || !line.content) {
+    if (line.type !== EnrichedLineType.NORMAL || !line.content) {
       result.push(line)
       continue
     }
@@ -489,7 +504,7 @@ export const extractBackgroundLines = (lyric: runtime.Lyric, options: ExtractBac
       continue
     }
 
-    const extracted: runtime.Line = {
+    const extracted: EnrichedLine = {
       ...line,
       content: nextContent,
       annotation: splitAnnotation(line.annotation, backgrounds),
@@ -502,5 +517,5 @@ export const extractBackgroundLines = (lyric: runtime.Lyric, options: ExtractBac
     return lyric
   }
   const lines = boundOpenBackgrounds(result)
-  return { ...lyric, lines, languages: deriveLanguageUsages(lines) }
+  return { ...lyric, lines, languageUsages: deriveEnrichedLanguageUsages(lines) }
 }

@@ -1,4 +1,4 @@
-import type { Diagnostic, Lyric } from '@gondola-lyrics/model/runtime'
+import type { Diagnostic, EnrichedLyric } from '@gondola-lyrics/model'
 import type { GenerateFormat, LyricFormat } from '@gondola-lyrics/kit'
 import type { PlaygroundOptions } from './options'
 
@@ -35,7 +35,7 @@ export interface PlaygroundForm {
 }
 
 export interface PlaygroundResult {
-  lyric: Lyric
+  lyric: EnrichedLyric
   diagnostics: Diagnostic[]
   elapsed: number
   inputBytes: number

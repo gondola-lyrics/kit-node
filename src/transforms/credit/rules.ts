@@ -1,8 +1,7 @@
-import { CreditRole } from '@gondola-lyrics/model/runtime'
+import { CreditRole } from '@gondola-lyrics/model'
 
 import enRules from '@rules/credits/en.json'
 import zhHansRules from '@rules/credits/zh-hans.json'
-
 import { findRuleMatchCuts, toRuleMatchKey } from '@root/utils'
 
 const MATCH_CACHE_LIMIT = 256
@@ -15,8 +14,8 @@ const CREDIT_ROLES = new Map<string, CreditRole>([
   ['ARRANGER', CreditRole.ARRANGER],
   ['PRODUCER', CreditRole.PRODUCER],
   ['PERFORMER', CreditRole.PERFORMER],
-  ['MIXER', CreditRole.MIXER],
-  ['MASTERING', CreditRole.MASTERING],
+  ['MIXER', CreditRole.MIXING_ENGINEER],
+  ['MASTERING', CreditRole.MASTERING_ENGINEER],
 ])
 
 const creditRules = new Map<string, readonly CreditRole[]>()

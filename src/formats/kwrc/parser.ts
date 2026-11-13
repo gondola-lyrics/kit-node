@@ -1,24 +1,24 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedWord, TimeRange } from '@gondola-lyrics/model'
 import type { ParseResult } from '../result'
 import type { KwrcContent, SourceLine, WordScales } from './common'
 
 import {
-  LineType,
-  LyricStatus,
-  Timing,
-  deriveLanguageUsages,
-  isWordLevelLine,
-  makeLineAnnotation,
-  makeLineAnnotationTranslation,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineInstrumental,
-  makeLineNormal,
-  makeLyric,
+  EnrichedLineType,
+  EnrichedLyricStatus,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  hasEnrichedLineWords,
+  makeEnrichedLineAnnotation,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineInstrumental,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeTimeRange,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import { readLrc, readLrcMetaTags, scanWordTags, splitWordTags } from '../lrc'
 import { finalizeLyric } from '../result'
@@ -28,7 +28,7 @@ export type { KwrcContent as KwrcParseInput } from './common'
 
 const SEPARATORS = /^\p{White_Space}+$/u
 
-const readWordTime = (tag: string, lineStart: number, scales: WordScales): runtime.TimeRange | undefined => {
+const readWordTime = (tag: string, lineStart: number, scales: WordScales): TimeRange | undefined => {
   const values = tag.split(',').map(Number)
   if (!Number.isSafeInteger(lineStart) || !values.every(Number.isSafeInteger)) {
     return undefined
@@ -53,7 +53,7 @@ const readWordTime = (tag: string, lineStart: number, scales: WordScales): runti
   return makeTimeRange({ start, end })
 }
 
-const readLine = ({ text, start }: SourceLine, nextStart: number | undefined, scales: WordScales | undefined): runtime.Line => {
+const readLine = ({ text, start }: SourceLine, nextStart: number | undefined, scales: WordScales | undefined): EnrichedLine => {
   const boundary = nextStart !== undefined && nextStart >= start ? nextStart : undefined
   let end = boundary
   const pieces = scanWordTags(text, WORD_PATTERN)
@@ -63,17 +63,19 @@ const readLine = ({ text, start }: SourceLine, nextStart: number | undefined, sc
       return readLrc(`[${start}ms]${text}${suffix}`).lines[0]!
     }
     const time = makeTimeRange({ start, end })
-    return VISIBLE_TEXT.test(text) ? makeLineNormal({ time, content: makeLineContentText(text) }) : makeLineInstrumental({ time })
+    return VISIBLE_TEXT.test(text)
+      ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentText(text) })
+      : makeEnrichedLineInstrumental({ time })
   }
 
-  const words: runtime.Word[] = []
+  const words: EnrichedWord[] = []
   for (const piece of pieces) {
     const time = piece.tag !== undefined && scales ? readWordTime(piece.tag, start, scales) : undefined
     if (piece.tag !== undefined && !time) {
       // Retaining the whole encoded row avoids presenting partially decoded or rounded timing as reliable.
-      return makeLineNormal({
+      return makeEnrichedLineNormal({
         time: makeTimeRange({ start, end: boundary }),
-        content: makeLineContentText(text),
+        content: makeEnrichedLineContentText(text),
       })
     }
     if (time?.end !== undefined) {
@@ -81,13 +83,15 @@ const readLine = ({ text, start }: SourceLine, nextStart: number | undefined, sc
     }
     for (const fragment of piece.text.split(/(\p{White_Space}+)/u)) {
       if (fragment) {
-        words.push(SEPARATORS.test(fragment) ? makeWordSpace({ text: fragment }) : makeWordNormal({ text: fragment, time }))
+        words.push(SEPARATORS.test(fragment) ? makeEnrichedWordSpace({ text: fragment }) : makeEnrichedWordNormal({ text: fragment, time }))
       }
     }
   }
 
   const time = makeTimeRange({ start, end })
-  return VISIBLE_TEXT.test(readText(text)) ? makeLineNormal({ time, content: makeLineContentWords(words) }) : makeLineInstrumental({ time })
+  return VISIBLE_TEXT.test(readText(text))
+    ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentWords(words) })
+    : makeEnrichedLineInstrumental({ time })
 }
 
 /**
@@ -103,14 +107,14 @@ const readLine = ({ text, start }: SourceLine, nextStart: number | undefined, sc
 export const parseKwrc = (input: string | KwrcContent): ParseResult => {
   const source = readKwrcContent(input)
   if (!source) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID }))
   }
 
   const track = readKwrcSource(source.original)
   const bilingual = hasKwrcTranslations(track)
   const encoded = track.lines.some((line) => !!line.text.match(WORD_PATTERN))
 
-  let lines: runtime.Line[]
+  let lines: EnrichedLine[]
   let tags = track.metaTags
   if (!encoded && !bilingual) {
     const fallback = readLrc(source.original)
@@ -123,7 +127,7 @@ export const parseKwrc = (input: string | KwrcContent): ParseResult => {
       const line = readLine(original, originals[index + 1]?.start, scales)
       const translation = bilingual ? readText(track.lines[index * 2 + 1]?.text ?? '') : ''
       if (VISIBLE_TEXT.test(translation)) {
-        line.annotation = makeLineAnnotation({ translations: [makeLineAnnotationTranslation({ text: translation })] })
+        line.annotation = makeEnrichedLineAnnotation({ translations: [makeEnrichedLineAnnotationTranslation({ text: translation })] })
       }
       return line
     })
@@ -131,18 +135,18 @@ export const parseKwrc = (input: string | KwrcContent): ParseResult => {
 
   // A final empty slot already supplied the preceding line's boundary.
   const last = lines.at(-1)
-  if (last?.type === LineType.INSTRUMENTAL && (last.time?.end === undefined || last.time.end === last.time.start)) {
+  if (last?.type === EnrichedLineType.INSTRUMENTAL && (last.time?.end === undefined || last.time.end === last.time.start)) {
     lines.pop()
   }
 
   return finalizeLyric(
-    makeLyric({
+    makeEnrichedLyric({
       format: FORMAT,
-      status: lines.length ? LyricStatus.VALID : LyricStatus.INVALID,
-      timing: lines.some(isWordLevelLine) ? Timing.WORD : Timing.LINE,
+      status: lines.length ? EnrichedLyricStatus.VALID : EnrichedLyricStatus.INVALID,
+      timing: lines.some(hasEnrichedLineWords) ? TimingLevel.WORD : TimingLevel.LINE,
       meta: readLrcMetaTags(tags),
       lines,
-      languages: deriveLanguageUsages(lines),
+      languageUsages: deriveEnrichedLanguageUsages(lines),
     }),
   )
 }

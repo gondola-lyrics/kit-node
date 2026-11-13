@@ -1,6 +1,6 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLineBackground, EnrichedLineContent, EnrichedLyric, EnrichedWord } from '@gondola-lyrics/model'
 
-import { WordType, makeLineContentText, makeLineContentWords } from '@gondola-lyrics/model/runtime'
+import { EnrichedWordType, makeEnrichedLineContentText, makeEnrichedLineContentWords } from '@gondola-lyrics/model'
 
 import { mapShared } from '@root/utils'
 
@@ -11,7 +11,7 @@ import { isCloseBracket, isNormalWord, isOpenBracket } from './utils'
  *
  * Space words at the same edge go with the bracket, and a word left with no text goes too, since a sung word must carry something.
  */
-const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
+const stripWordEdges = (words: EnrichedWord[]): EnrichedWord[] => {
   const firstIndex = words.findIndex(isNormalWord)
   const first = words[firstIndex]
   const last = words[words.findLastIndex(isNormalWord)]
@@ -29,7 +29,7 @@ const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
     } else {
       result.splice(firstIndex, 1)
     }
-    while (result[0]?.type === WordType.SPACE) {
+    while (result[0]?.type === EnrichedWordType.SPACE) {
       result.shift()
     }
   }
@@ -44,7 +44,7 @@ const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
     } else {
       result.splice(endIndex, 1)
     }
-    while (result.at(-1)?.type === WordType.SPACE) {
+    while (result.at(-1)?.type === EnrichedWordType.SPACE) {
       result.pop()
     }
   }
@@ -56,7 +56,7 @@ const stripWordEdges = (words: runtime.Word[]): runtime.Word[] => {
  * Plain text is read literally, so a source that padded it with spaces keeps them; only word content
  * treats space words as the structural separators they are.
  */
-const stripContentBrackets = (content: runtime.LineContent | undefined): runtime.LineContent | undefined => {
+const stripContentBrackets = (content: EnrichedLineContent | undefined): EnrichedLineContent | undefined => {
   if (!content) {
     return content
   }
@@ -72,23 +72,23 @@ const stripContentBrackets = (content: runtime.LineContent | undefined): runtime
       return content
     }
     const stripped = text.slice(start, end === 0 ? undefined : end)
-    return stripped ? makeLineContentText(stripped) : undefined
+    return stripped ? makeEnrichedLineContentText(stripped) : undefined
   }
 
   const words = stripWordEdges(content.words)
   if (words === content.words) {
     return content
   }
-  return words.length ? makeLineContentWords(words) : undefined
+  return words.length ? makeEnrichedLineContentWords(words) : undefined
 }
 
-const stripLineBackgrounds = (line: runtime.Line): runtime.Line => {
+const stripLineBackgrounds = (line: EnrichedLine): EnrichedLine => {
   if (!line.backgrounds.length) {
     return line
   }
 
   let changed = false
-  const kept: runtime.LineBackground[] = []
+  const kept: EnrichedLineBackground[] = []
   for (const background of line.backgrounds) {
     const content = stripContentBrackets(background.content)
     if (content === background.content) {
@@ -111,7 +111,7 @@ const stripLineBackgrounds = (line: runtime.Line): runtime.Line => {
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
-export const stripBackgroundBrackets = (lyric: runtime.Lyric): runtime.Lyric => {
+export const stripBackgroundBrackets = (lyric: EnrichedLyric): EnrichedLyric => {
   const lines = mapShared(lyric.lines, stripLineBackgrounds)
   return lines === lyric.lines ? lyric : { ...lyric, lines }
 }

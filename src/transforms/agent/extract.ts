@@ -1,17 +1,17 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { Agent, EnrichedLine, EnrichedLineContent, EnrichedLyric, EnrichedWord } from '@gondola-lyrics/model'
 
 import {
   AgentType,
-  LineType,
-  Timing,
-  deriveLanguageUsages,
-  getContentText,
-  isWordLevelLine,
+  EnrichedLineType,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  getEnrichedLineContentText,
+  hasEnrichedLineWords,
   makeAgent,
-  makeLineContentText,
-  makeLineContentWords,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
   makeText,
-} from '@gondola-lyrics/model/runtime'
+} from '@gondola-lyrics/model'
 
 export interface ExtractAgentsOptions {
   /**
@@ -40,10 +40,7 @@ const haveSameAgents = (first: readonly string[], second: readonly string[]): bo
   return first.length === second.length && first.every((id, index) => id === second[index])
 }
 
-const prepareBindings = (
-  bindings: ExtractAgentsOptions['bindings'],
-  agents: readonly runtime.Agent[],
-): Map<string, readonly string[]> | undefined => {
+const prepareBindings = (bindings: ExtractAgentsOptions['bindings'], agents: readonly Agent[]): Map<string, readonly string[]> | undefined => {
   if (!bindings) {
     return undefined
   }
@@ -75,16 +72,16 @@ const isClockTimeColon = (before: string, after: string): boolean => {
 /**
  * Cuts only source text, so retained word ranges and annotations do not need fabricated character timings.
  */
-const removePrefix = (content: runtime.LineContent | undefined, length: number): runtime.LineContent | undefined => {
+const removePrefix = (content: EnrichedLineContent | undefined, length: number): EnrichedLineContent | undefined => {
   if (!content) {
     return undefined
   }
   if (content.text !== undefined) {
     const text = content.text.slice(length).trim()
-    return text ? makeLineContentText(text) : undefined
+    return text ? makeEnrichedLineContentText(text) : undefined
   }
 
-  const words: runtime.Word[] = []
+  const words: EnrichedWord[] = []
   let remaining = length
   for (const word of content.words) {
     if (remaining >= word.text.length) {
@@ -102,7 +99,7 @@ const removePrefix = (content: runtime.LineContent | undefined, length: number):
     }
   }
   const hasText = words.some((word) => !!word.text.trim())
-  return hasText ? makeLineContentWords(words) : undefined
+  return hasText ? makeEnrichedLineContentWords(words) : undefined
 }
 
 /**
@@ -114,7 +111,7 @@ const removePrefix = (content: runtime.LineContent | undefined, length: number):
  *
  * @throws {TypeError} If bindings reference an agent id absent from lyric.agents.
  */
-export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOptions = {}): runtime.Lyric => {
+export const extractAgents = (lyric: EnrichedLyric, options: ExtractAgentsOptions = {}): EnrichedLyric => {
   const bindings = prepareBindings(options.bindings, lyric.agents)
   if (bindings?.size === 0 || !lyric.lines.length) {
     return lyric
@@ -162,12 +159,12 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
   }
 
   const originalLines = lyric.lines
-  let lines: runtime.Line[] | undefined
+  let lines: EnrichedLine[] | undefined
   let current: readonly string[] | undefined
   let contentChanged = false
   for (const [index, line] of originalLines.entries()) {
-    const text = line.type === LineType.NORMAL ? getContentText(line.content) : ''
-    if (line.type !== LineType.NORMAL || !text.trim()) {
+    const text = line.type === EnrichedLineType.NORMAL ? getEnrichedLineContentText(line.content) : ''
+    if (line.type !== EnrichedLineType.NORMAL || !text.trim()) {
       current = undefined
       lines?.push(line)
       continue
@@ -207,10 +204,10 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
       }
     }
 
-    const nextAgents = current && !haveSameAgents(line.agents, current) ? [...current] : line.agents
-    if (content !== line.content || nextAgents !== line.agents) {
+    const nextAgents = current && !haveSameAgents(line.agentIds, current) ? [...current] : line.agentIds
+    if (content !== line.content || nextAgents !== line.agentIds) {
       lines ??= originalLines.slice(0, index)
-      lines.push({ ...line, content, agents: nextAgents })
+      lines.push({ ...line, content, agentIds: nextAgents })
     } else {
       lines?.push(line)
     }
@@ -222,13 +219,19 @@ export const extractAgents = (lyric: runtime.Lyric, options: ExtractAgentsOption
 
   const remainingLines = lines ?? originalLines
   let timing = lyric.timing
-  if (contentChanged && timing === Timing.WORD) {
+  if (contentChanged && timing === TimingLevel.WORD) {
     const hasWordLevelContent = remainingLines.some((line) => {
-      return isWordLevelLine(line) || line.backgrounds.some(isWordLevelLine)
+      return hasEnrichedLineWords(line) || line.backgrounds.some(hasEnrichedLineWords)
     })
     if (!hasWordLevelContent) {
-      timing = Timing.LINE
+      timing = TimingLevel.LINE
     }
   }
-  return { ...lyric, agents, lines: remainingLines, timing, languages: contentChanged ? deriveLanguageUsages(remainingLines) : lyric.languages }
+  return {
+    ...lyric,
+    agents,
+    lines: remainingLines,
+    timing,
+    languageUsages: contentChanged ? deriveEnrichedLanguageUsages(remainingLines) : lyric.languageUsages,
+  }
 }

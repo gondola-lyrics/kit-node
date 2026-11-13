@@ -1,25 +1,27 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedWord, LineRomanView, TextToken, TimeRange } from '@gondola-lyrics/model'
 
 import {
-  LineType,
-  WordType,
-  deriveLineRomans,
-  getContentText,
-  makeLineAnnotation,
-  makeLineAnnotationRoman,
-  makeLineAnnotationTranslation,
-  makeWordAnnotation,
-  makeWordAnnotationRoman,
-  makeWordAnnotationToken,
-} from '@gondola-lyrics/model/runtime'
+  EnrichedLineType,
+  EnrichedWordType,
+  deriveEnrichedLineRomanViews,
+  getEnrichedLineAnnotationRomanText,
+  getEnrichedLineContentText,
+  makeEnrichedLineAnnotation,
+  makeEnrichedLineAnnotationRoman,
+  makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedWordAnnotation,
+  makeEnrichedWordAnnotationRoman,
+  makeTextToken,
+} from '@gondola-lyrics/model'
 
 import { lowerBound } from './array'
 import { combinesKana } from './kana'
 import { lowerTag } from './language'
 
 export interface AnnotationSources {
-  translations?: runtime.Line[]
-  romans?: runtime.Line[]
+  translations?: EnrichedLine[]
+  romans?: EnrichedLine[]
 }
 
 export interface AnnotationTiming {
@@ -59,7 +61,7 @@ export interface AnnotationMatchOptions {
   /**
    * Retains source timestamp information without adding fields to model lines.
    */
-  getTiming?: (line: runtime.Line) => AnnotationTiming | undefined
+  getTiming?: (line: EnrichedLine) => AnnotationTiming | undefined
 }
 
 export interface AnnotationAttachOptions extends AnnotationMatchOptions {
@@ -81,16 +83,16 @@ export interface AnnotationAttachOptions extends AnnotationMatchOptions {
 }
 
 interface RomanTarget {
-  word: runtime.Word
+  word: EnrichedWord
   index: number
-  time: runtime.TimeRange
+  time: TimeRange
   spaces: number
-  tokens: runtime.WordAnnotationToken[]
+  tokens: TextToken[]
 }
 
 interface RomanSource {
-  word: runtime.Word
-  time?: runtime.TimeRange
+  word: EnrichedWord
+  time?: TimeRange
   separator: string
   target?: RomanTarget
 }
@@ -110,7 +112,7 @@ interface TimeIndex {
 }
 
 interface AnnotationSource {
-  line: runtime.Line
+  line: EnrichedLine
   index: number
   text: string
   start?: number
@@ -120,23 +122,25 @@ interface AnnotationSource {
 
 type SourceGroups = Map<number, Map<number, AnnotationSource[]>>
 
-const readText = (line: runtime.Line) => {
-  return getContentText(line.content).trim()
+const readText = (line: EnrichedLine) => {
+  return getEnrichedLineContentText(line.content).trim()
 }
 
 /**
- * Combines explicit roman tracks with display-only word aggregations, preferring explicit entries for the same language.
+ * Returns display views of explicit roman tracks and word aggregations, preferring explicit entries for the same language.
  *
- * Derived entries must not be stored back on the line.
+ * Views must not be stored as source annotations.
  */
-export const getLineRomans = (line: Pick<runtime.Line, 'content' | 'annotation'>): runtime.LineAnnotationRoman[] => {
-  const explicit = line.annotation?.romans ?? []
+export const getLineRomans = (line: Pick<EnrichedLine, 'content' | 'annotation'>): LineRomanView[] => {
+  const explicit = (line.annotation?.romans ?? []).map((item) => {
+    return { language: item.language, scheme: item.scheme, text: getEnrichedLineAnnotationRomanText(item) }
+  })
   const languages = new Set(explicit.map((item) => lowerTag(item.language)))
-  const derived = deriveLineRomans(line.content).filter((item) => !languages.has(lowerTag(item.language)))
+  const derived = deriveEnrichedLineRomanViews(line.content).filter((item) => !languages.has(lowerTag(item.language)))
   return derived.length ? [...explicit, ...derived] : explicit
 }
 
-const readWordRange = (word: runtime.Word): runtime.TimeRange | undefined => {
+const readWordRange = (word: EnrichedWord): TimeRange | undefined => {
   const time = word.time
   if (
     !time ||
@@ -149,7 +153,7 @@ const readWordRange = (word: runtime.Word): runtime.TimeRange | undefined => {
   return time
 }
 
-const containsRomanTime = (source: runtime.TimeRange, target: runtime.TimeRange, tolerance: number): boolean => {
+const containsRomanTime = (source: TimeRange, target: TimeRange, tolerance: number): boolean => {
   const end = target.end ?? Number.POSITIVE_INFINITY
   if (source.start < target.start - tolerance || (source.end !== undefined && source.end > end + tolerance)) {
     return false
@@ -162,7 +166,7 @@ const containsRomanTime = (source: runtime.TimeRange, target: runtime.TimeRange,
 
 // `null` reports a tie between equal-priority words and `undefined` no containing word at all.
 // Both leave the fragment unmatched; only a tie rules out local recovery.
-const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], tolerance: number): RomanTarget | null | undefined => {
+const matchRomanTarget = (time: TimeRange, targets: RomanTarget[], tolerance: number): RomanTarget | null | undefined => {
   let matched: RomanTarget | undefined
   let priority = -1
   for (const target of targets) {
@@ -184,7 +188,7 @@ const matchRomanTarget = (time: runtime.TimeRange, targets: RomanTarget[], toler
   return matched ?? (priority === -1 ? undefined : null)
 }
 
-const overlapLength = (time: runtime.TimeRange, target: RomanTarget): number => {
+const overlapLength = (time: TimeRange, target: RomanTarget): number => {
   const finish = time.end ?? time.start
   return Math.min(finish, target.time.end ?? Number.POSITIVE_INFINITY) - Math.max(time.start, target.time.start)
 }
@@ -312,10 +316,10 @@ const recoverRomanTargets = (
   return true
 }
 
-const readRomanLanguage = (source: runtime.Line) => {
+const readRomanLanguage = (source: EnrichedLine) => {
   const languages = new Set(source.languages.map(lowerTag).filter(Boolean))
   for (const word of source.content?.words ?? []) {
-    const language = word.type === WordType.NORMAL ? lowerTag(word.language) : undefined
+    const language = word.type === EnrichedWordType.NORMAL ? lowerTag(word.language) : undefined
     if (language) {
       languages.add(language)
     }
@@ -327,12 +331,12 @@ const readRomanLanguage = (source: runtime.Line) => {
 }
 
 const attachWordRomans = (
-  line: runtime.Line,
+  line: EnrichedLine,
   source: AnnotationSource,
   tolerance: number,
   language: string | undefined,
   fallback: boolean,
-): runtime.Line | undefined => {
+): EnrichedLine | undefined => {
   const content = line.content
   const sourceContent = source.line.content
   if (!content?.words.length || content.text !== undefined || !sourceContent?.words.length || sourceContent.text !== undefined) {
@@ -342,12 +346,12 @@ const attachWordRomans = (
   const targets: RomanTarget[] = []
   let spaces = 0
   for (const [index, word] of content.words.entries()) {
-    if (word.type === WordType.SPACE) {
+    if (word.type === EnrichedWordType.SPACE) {
       spaces += 1
       continue
     }
     const time = readWordRange(word)
-    if (word.type !== WordType.NORMAL || !time) {
+    if (word.type !== EnrichedWordType.NORMAL || !time) {
       return undefined
     }
     targets.push({ word, index, time, spaces, tokens: [] })
@@ -356,12 +360,12 @@ const attachWordRomans = (
   const sources: RomanSource[] = []
   let separator = ''
   for (const word of sourceContent.words) {
-    if (word.type === WordType.SPACE) {
+    if (word.type === EnrichedWordType.SPACE) {
       separator += word.text
       continue
     }
     const time = readWordRange(word)
-    if (word.type !== WordType.NORMAL || !word.text.trim() || (word.time && !time) || (!time && !fallback)) {
+    if (word.type !== EnrichedWordType.NORMAL || !word.text.trim() || (word.time && !time) || (!time && !fallback)) {
       return undefined
     }
     const target = time ? matchRomanTarget(time, targets, tolerance) : undefined
@@ -395,7 +399,7 @@ const attachWordRomans = (
       return undefined
     }
     previousStart = start
-    const token = makeWordAnnotationToken({ text: previous ? word.text : word.text.trimStart(), time: { start, end } })
+    const token = makeTextToken({ text: previous ? word.text : word.text.trimStart(), time: { start, end } })
     if (previous) {
       const last = previous.tokens.at(-1)!
       if (target.spaces > previous.spaces) {
@@ -424,16 +428,16 @@ const attachWordRomans = (
     if (!tokens.length) {
       continue
     }
-    const roman = makeWordAnnotationRoman({ language, tokens })
-    words[index] = { ...word, annotation: makeWordAnnotation({ ...word.annotation, romans: [...(word.annotation?.romans ?? []), roman] }) }
+    const roman = makeEnrichedWordAnnotationRoman({ language, tokens })
+    words[index] = { ...word, annotation: makeEnrichedWordAnnotation({ ...word.annotation, romans: [...(word.annotation?.romans ?? []), roman] }) }
   }
   const result = { ...line, content: { ...content, words } }
-  const derived = deriveLineRomans(result.content).find((item) => lowerTag(item.language) === language)
+  const derived = deriveEnrichedLineRomanViews(result.content).find((item) => lowerTag(item.language) === language)
   // Commit the whole track only when the model can reproduce its text, including separators.
   return derived?.text === source.text ? result : undefined
 }
 
-const readSources = (lines: runtime.Line[], options: AnnotationMatchOptions): AnnotationSource[] => {
+const readSources = (lines: EnrichedLine[], options: AnnotationMatchOptions): AnnotationSource[] => {
   const result: AnnotationSource[] = []
   const preserve = options.preservePlaceholders
   for (const [index, line] of lines.entries()) {
@@ -455,7 +459,7 @@ const readSources = (lines: runtime.Line[], options: AnnotationMatchOptions): An
   return result
 }
 
-const createTimeIndex = (lines: runtime.Line[], options: AnnotationMatchOptions): TimeIndex => {
+const createTimeIndex = (lines: EnrichedLine[], options: AnnotationMatchOptions): TimeIndex => {
   const starts: (number | undefined)[] = []
   const lyricRows: number[] = []
   const targets = new Map<number, number[]>()
@@ -463,7 +467,7 @@ const createTimeIndex = (lines: runtime.Line[], options: AnnotationMatchOptions)
     const start = line.time?.start
     const valid = start !== undefined && (!options.preservePlaceholders || Number.isFinite(start))
     starts.push(valid ? start : undefined)
-    if (options.matchByOrder && line.type === LineType.NORMAL && readText(line)) {
+    if (options.matchByOrder && line.type === EnrichedLineType.NORMAL && readText(line)) {
       lyricRows.push(index)
     }
     if (!valid) {
@@ -743,11 +747,11 @@ const matchAnnotations = (index: TimeIndex, sources: AnnotationSource[], options
 }
 
 const attachTracks = (
-  lines: runtime.Line[],
+  lines: EnrichedLine[],
   sources: AnnotationSources,
   options: AnnotationAttachOptions,
   wordTolerance?: number,
-): runtime.Line[] => {
+): EnrichedLine[] => {
   if (!lines.length || (!sources.translations?.length && !sources.romans?.length)) {
     return lines
   }
@@ -758,7 +762,7 @@ const attachTracks = (
     const matches = matchAnnotations(index, readSources(sources[kind] ?? [], options), options)
     for (const [target, source] of matches) {
       const line = result[target]!
-      if (line.type === LineType.INSTRUMENTAL || !source.text) {
+      if (line.type === EnrichedLineType.INSTRUMENTAL || !source.text) {
         continue
       }
       const romanLanguage = kind === 'romans' && wordTolerance !== undefined ? readRomanLanguage(source.line) : undefined
@@ -768,10 +772,13 @@ const attachTracks = (
           : undefined
       if (!annotated) {
         const language = romanLanguage ? romanLanguage.language : source.line.languages[0]
-        const create = kind === 'romans' ? makeLineAnnotationRoman : makeLineAnnotationTranslation
-        const annotation = makeLineAnnotation({
+        const item =
+          kind === 'romans'
+            ? makeEnrichedLineAnnotationRoman({ content: makeEnrichedLineAnnotationRomanContentText(source.text), language })
+            : makeEnrichedLineAnnotationTranslation({ text: source.text, language })
+        const annotation = makeEnrichedLineAnnotation({
           ...line.annotation,
-          [kind]: [...(line.annotation?.[kind] ?? []), create({ text: source.text, language })],
+          [kind]: [...(line.annotation?.[kind] ?? []), item],
         })
         annotated = { ...line, annotation }
       }
@@ -789,7 +796,7 @@ const attachTracks = (
  *
  * Reuses the original array when no visible annotations change.
  */
-export const attachLineAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationMatchOptions = {}): runtime.Line[] => {
+export const attachLineAnnotations = (lines: EnrichedLine[], sources: AnnotationSources, options: AnnotationMatchOptions = {}): EnrichedLine[] => {
   return attachTracks(lines, sources, options)
 }
 
@@ -799,7 +806,7 @@ export const attachLineAnnotations = (lines: runtime.Line[], sources: Annotation
  *
  * Match before final normalization; original text and word timing are preserved.
  */
-export const attachAnnotations = (lines: runtime.Line[], sources: AnnotationSources, options: AnnotationAttachOptions = {}): runtime.Line[] => {
+export const attachAnnotations = (lines: EnrichedLine[], sources: AnnotationSources, options: AnnotationAttachOptions = {}): EnrichedLine[] => {
   const tolerance = Number.isFinite(options.wordTolerance) ? Math.max(0, options.wordTolerance ?? 0) : 0
   return attachTracks(lines, sources, options, tolerance)
 }

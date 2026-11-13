@@ -1,6 +1,6 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLineContent, EnrichedLyric } from '@gondola-lyrics/model'
 
-import { LineType, WordType, makeWordEmphasis, validateTimeRange } from '@gondola-lyrics/model/runtime'
+import { EnrichedLineType, EnrichedWordType, makeEnrichedWordEmphasis, validateTimeRange } from '@gondola-lyrics/model'
 
 import { mapShared } from '@root/utils'
 
@@ -13,13 +13,13 @@ export interface DeriveWordEmphasisOptions {
   durationThreshold?: number
 }
 
-const deriveContentEmphasis = (content: runtime.LineContent | undefined, durationThreshold: number): runtime.LineContent | undefined => {
+const deriveContentEmphasis = (content: EnrichedLineContent | undefined, durationThreshold: number): EnrichedLineContent | undefined => {
   if (!content) {
     return content
   }
 
   const words = mapShared(content.words, (word) => {
-    if (word.type !== WordType.NORMAL || word.emphasis?.derived === false) {
+    if (word.type !== EnrichedWordType.NORMAL || word.emphasis?.derived === false) {
       return word
     }
 
@@ -30,7 +30,7 @@ const deriveContentEmphasis = (content: runtime.LineContent | undefined, duratio
       if (word.emphasis?.value) {
         return word
       }
-      return { ...word, emphasis: makeWordEmphasis({ value: true, derived: true }) }
+      return { ...word, emphasis: makeEnrichedWordEmphasis({ value: true, derived: true }) }
     }
     if (!word.emphasis) {
       return word
@@ -51,14 +51,14 @@ const deriveContentEmphasis = (content: runtime.LineContent | undefined, duratio
  *
  * @throws {RangeError} If durationThreshold is not a non-negative safe integer in milliseconds.
  */
-export const deriveWordEmphasis = (lyric: runtime.Lyric, options: DeriveWordEmphasisOptions = {}): runtime.Lyric => {
+export const deriveWordEmphasis = (lyric: EnrichedLyric, options: DeriveWordEmphasisOptions = {}): EnrichedLyric => {
   const durationThreshold = options.durationThreshold ?? 3000
   if (!Number.isSafeInteger(durationThreshold) || durationThreshold < 0) {
     throw new RangeError('durationThreshold must be a non-negative safe integer in milliseconds')
   }
 
   const lines = mapShared(lyric.lines, (line) => {
-    if (line.type !== LineType.NORMAL) {
+    if (line.type !== EnrichedLineType.NORMAL) {
       return line
     }
 

@@ -1,17 +1,17 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLineBackground, EnrichedLyric, EnrichedWord, Meta, Text, TimeRange } from '@gondola-lyrics/model'
 import type { XmlElement, XmlNode } from '@root/utils'
 import type { TtmlProfile } from './common'
 
 import {
   AgentType,
   CreditRole,
-  LineType,
-  Timing,
-  WordType,
-  removeOffset,
-  resolveAnnotationItemTime,
-  resolveAnnotationTokenTime,
-} from '@gondola-lyrics/model/runtime'
+  EnrichedLineType,
+  TimingLevel,
+  EnrichedWordType,
+  removeTimeOffset,
+  resolveEnrichedWordAnnotationItemTime,
+  resolveEnrichedWordAnnotationTokenTime,
+} from '@gondola-lyrics/model'
 
 import { createXmlElement, createXmlText, getLineRomans, serializeXml } from '@root/utils'
 
@@ -47,13 +47,13 @@ export interface TtmlGenerateOptions {
   includeMeta?: boolean
 }
 
-type SungLine = runtime.Line | runtime.LineBackground
+type SungLine = EnrichedLine | EnrichedLineBackground
 
 type Attributes = [string, string][]
 
 type AnnotationKind = 'translations' | 'romans'
 
-type AnnotationTracks = Map<string | undefined, Map<runtime.Line, XmlNode[]>>
+type AnnotationTracks = Map<string | undefined, Map<EnrichedLine, XmlNode[]>>
 
 type ResolvedTtmlGenerateOptions = Required<TtmlGenerateOptions>
 
@@ -75,7 +75,7 @@ const ANNOTATION_KINDS = ['translations', 'romans'] as const
 
 const XML_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/
 
-const resolveOptions = (lyric: runtime.Lyric, options: TtmlGenerateOptions): ResolvedTtmlGenerateOptions => {
+const resolveOptions = (lyric: EnrichedLyric, options: TtmlGenerateOptions): ResolvedTtmlGenerateOptions => {
   const profile = options.profile ?? (lyric.format === FORMAT && lyric.extra.profile === 'itunes' ? 'itunes' : 'amll')
   if (profile !== 'amll' && profile !== 'itunes') {
     throw new Error('Unsupported TTML profile')
@@ -118,7 +118,7 @@ const makeIdAllocator = (ids: string[]) => {
 /**
  * Shares one mapping between declarations, body lines, and annotation references.
  */
-const makeContext = (lyric: runtime.Lyric, lines: runtime.Line[], profile: TtmlProfile): RenderContext => {
+const makeContext = (lyric: EnrichedLyric, lines: EnrichedLine[], profile: TtmlProfile): RenderContext => {
   const ids = lyric.agents.map((agent) => {
     return agent.id
   })
@@ -153,7 +153,7 @@ const makeContext = (lyric: runtime.Lyric, lines: runtime.Line[], profile: TtmlP
  * Bakes the playback offset into TTML timestamps without clamping negative results.
  */
 const renderTime = (time: number, offset: number) => {
-  const shifted = removeOffset(time, offset)
+  const shifted = removeTimeOffset(time, offset)
   if (!Number.isInteger(shifted) || shifted < 0) {
     throw new RangeError('TTML timestamps must be non-negative integer milliseconds after applying the offset')
   }
@@ -169,7 +169,7 @@ const renderTime = (time: number, offset: number) => {
 /**
  * Writes known bounds without inventing an end.
  */
-const renderTimeAttributes = (time: runtime.TimeRange | undefined, offset: number): Attributes => {
+const renderTimeAttributes = (time: TimeRange | undefined, offset: number): Attributes => {
   if (!time) {
     throw new Error('TTML sung lines, words, and ruby tokens require a time range')
   }
@@ -199,8 +199,8 @@ const getLineLanguage = (line: SungLine): string | undefined => {
 /**
  * Writes separators as text and resolves inherited ruby timing through the model.
  */
-const renderWord = (word: runtime.Word, context: RenderContext, language?: string): XmlNode => {
-  if (word.type === WordType.SPACE) {
+const renderWord = (word: EnrichedWord, context: RenderContext, language?: string): XmlNode => {
+  if (word.type === EnrichedWordType.SPACE) {
     return createXmlText(word.text)
   }
 
@@ -213,7 +213,7 @@ const renderWord = (word: runtime.Word, context: RenderContext, language?: strin
   const tokens = ruby.tokens.map((token) => {
     return createXmlElement(
       'span',
-      [['tts:ruby', RUBY_TEXT], ...renderTimeAttributes(resolveAnnotationTokenTime(token, ruby, word), context.offset)],
+      [['tts:ruby', RUBY_TEXT], ...renderTimeAttributes(resolveEnrichedWordAnnotationTokenTime(token, ruby, word), context.offset)],
       [createXmlText(token.text)],
     )
   })
@@ -227,7 +227,7 @@ const renderWord = (word: runtime.Word, context: RenderContext, language?: strin
         'span',
         [
           ['tts:ruby', RUBY_TEXT_CONTAINER],
-          ...renderTimeAttributes(resolveAnnotationItemTime(ruby, word), context.offset),
+          ...renderTimeAttributes(resolveEnrichedWordAnnotationItemTime(ruby, word), context.offset),
           ...renderLanguage(ruby.language, word.language),
         ],
         tokens,
@@ -277,7 +277,7 @@ const renderLineAttributes = (line: SungLine, context: RenderContext): Attribute
     ['xml:space', 'preserve'],
     ['xml:lang', getLineLanguage(line) ?? ''],
   ]
-  const lead = line.agents[0]
+  const lead = line.agentIds[0]
   if (lead !== undefined) {
     const id = context.agents.get(lead)
     if (!id) {
@@ -295,7 +295,7 @@ const createLyricElement = (name: string, attributes: Attributes, children: XmlN
   return createXmlElement(name, attributes, [createXmlText(''), ...children])
 }
 
-const renderBackground = (line: runtime.LineBackground, context: RenderContext) => {
+const renderBackground = (line: EnrichedLineBackground, context: RenderContext) => {
   const children = renderContent(line, context)
   if (context.profile === 'amll') {
     children.push(...renderInlineAnnotations(line, getLineLanguage(line)))
@@ -304,7 +304,7 @@ const renderBackground = (line: runtime.LineBackground, context: RenderContext) 
   return createXmlElement('span', [['ttm:role', ROLE_BACKGROUND], ...renderLineAttributes(line, context)], children)
 }
 
-const renderLine = (line: runtime.Line, context: RenderContext) => {
+const renderLine = (line: EnrichedLine, context: RenderContext) => {
   const before: XmlNode[] = []
   const after: XmlNode[] = []
   for (const background of line.backgrounds) {
@@ -323,7 +323,7 @@ const renderLine = (line: runtime.Line, context: RenderContext) => {
   return createLyricElement('p', renderLineAttributes(line, context), children)
 }
 
-const renderAgents = (lyric: runtime.Lyric, context: RenderContext) => {
+const renderAgents = (lyric: EnrichedLyric, context: RenderContext) => {
   return lyric.agents.map((agent) => {
     const type = agent.type === AgentType.PERSON ? 'person' : agent.type === AgentType.GROUP ? 'group' : (agent.raw ?? 'other')
     const names = agent.names.map((name) => {
@@ -341,9 +341,9 @@ const renderAgents = (lyric: runtime.Lyric, context: RenderContext) => {
   })
 }
 
-const renderAmllMeta = (meta: runtime.Meta): XmlElement[] => {
+const renderAmllMeta = (meta: Meta): XmlElement[] => {
   const nodes: XmlElement[] = []
-  const groups: [string, runtime.Text[]][] = [
+  const groups: [string, Text[]][] = [
     ['musicName', meta.titles],
     ['artists', meta.artists],
     ['album', meta.albums],
@@ -373,7 +373,7 @@ const renderAmllMeta = (meta: runtime.Meta): XmlElement[] => {
   return nodes
 }
 
-const renderSongwriters = (meta: runtime.Meta): XmlElement[] => {
+const renderSongwriters = (meta: Meta): XmlElement[] => {
   const names: XmlElement[] = []
   for (const credit of meta.credits) {
     if (credit.role !== CreditRole.LYRICIST) {
@@ -414,9 +414,9 @@ const renderAnnotationTracks = (tracks: AnnotationTracks, kind: AnnotationKind, 
 /**
  * A background-only annotation still references its parent paragraph, with a second reference naming the background.
  */
-const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): XmlElement[] => {
+const renderHeadAnnotations = (lines: EnrichedLine[], context: RenderContext): XmlElement[] => {
   const tracks: Record<AnnotationKind, AnnotationTracks> = { translations: new Map(), romans: new Map() }
-  const append = (source: SungLine, line: runtime.Line, background?: runtime.LineBackground) => {
+  const append = (source: SungLine, line: EnrichedLine, background?: EnrichedLineBackground) => {
     const annotation = { translations: source.annotation?.translations ?? [], romans: getLineRomans(source) }
     for (const kind of ANNOTATION_KINDS) {
       for (const item of annotation[kind]) {
@@ -460,7 +460,7 @@ const renderHeadAnnotations = (lines: runtime.Line[], context: RenderContext): X
   })
 }
 
-const renderMetadata = (lyric: runtime.Lyric, lines: runtime.Line[], context: RenderContext, includeMeta: boolean): XmlElement => {
+const renderMetadata = (lyric: EnrichedLyric, lines: EnrichedLine[], context: RenderContext, includeMeta: boolean): XmlElement => {
   const metadata = renderAgents(lyric, context)
   const itunes: XmlElement[] = []
   if (includeMeta && lyric.meta) {
@@ -479,7 +479,7 @@ const renderMetadata = (lyric: runtime.Lyric, lines: runtime.Line[], context: Re
   return createXmlElement('metadata', renderLanguage(undefined, lyric.meta?.language), metadata)
 }
 
-const renderRootAttributes = (lyric: runtime.Lyric, profile: TtmlProfile): Attributes => {
+const renderRootAttributes = (lyric: EnrichedLyric, profile: TtmlProfile): Attributes => {
   const attributes: Attributes = [
     ['xmlns', NAMESPACE_TTML],
     ['xmlns:ttm', NAMESPACE_TTML_METADATA],
@@ -489,7 +489,7 @@ const renderRootAttributes = (lyric: runtime.Lyric, profile: TtmlProfile): Attri
   if (profile === 'amll') {
     attributes.push(['xmlns:amll', NAMESPACE_AMLL])
   }
-  attributes.push(...renderLanguage(lyric.meta?.language), ['itunes:timing', lyric.timing === Timing.WORD ? TIMING_WORD : TIMING_LINE])
+  attributes.push(...renderLanguage(lyric.meta?.language), ['itunes:timing', lyric.timing === TimingLevel.WORD ? TIMING_WORD : TIMING_LINE])
 
   return attributes
 }
@@ -501,14 +501,14 @@ const renderRootAttributes = (lyric: runtime.Lyric, profile: TtmlProfile): Attri
  * Profile mappings retain the lead agent and first AMLL ruby, omitting unsupported fields and instrumental nodes.
  * Word romanizations are emitted as line text without their token timing.
  */
-export const generateTtml = (lyric: runtime.Lyric, options: TtmlGenerateOptions = {}): TtmlGenerateResult => {
-  if (lyric.timing !== Timing.LINE && lyric.timing !== Timing.WORD) {
+export const generateTtml = (lyric: EnrichedLyric, options: TtmlGenerateOptions = {}): TtmlGenerateResult => {
+  if (lyric.timing !== TimingLevel.LINE && lyric.timing !== TimingLevel.WORD) {
     throw new Error('TTML generation requires line or word timing')
   }
 
   const resolved = resolveOptions(lyric, options)
   const lines = lyric.lines.filter((line) => {
-    return line.type !== LineType.INSTRUMENTAL
+    return line.type !== EnrichedLineType.INSTRUMENTAL
   })
   const context = makeContext(lyric, lines, resolved.profile)
   const metadata = renderMetadata(lyric, lines, context, resolved.includeMeta)

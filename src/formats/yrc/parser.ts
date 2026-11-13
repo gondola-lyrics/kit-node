@@ -1,25 +1,25 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedWord, TimeRange } from '@gondola-lyrics/model'
 import type { AnnotationTiming } from '@root/utils'
 import type { LrcMetaTag } from '../lrc'
 import type { ParseResult } from '../result'
 import type { YrcContent } from './common'
 
 import {
-  LyricStatus,
-  Timing,
-  WordType,
-  deriveLanguageUsages,
-  isWordLevelLine,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineInstrumental,
-  makeLineNormal,
-  makeLyric,
+  EnrichedLyricStatus,
+  TimingLevel,
+  EnrichedWordType,
+  deriveEnrichedLanguageUsages,
+  hasEnrichedLineWords,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineInstrumental,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeTimeRange,
   makeUnknownEntry,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import { attachAnnotations, trimRuleWhitespace } from '@root/utils'
 
@@ -65,7 +65,7 @@ interface JsonLine {
 
 interface SourceLine {
   row: number
-  line: runtime.Line
+  line: EnrichedLine
   display?: boolean
   credit?: boolean
 }
@@ -117,22 +117,24 @@ export const readJsonLine = (text: string): JsonLine | null => {
   }
 }
 
-const appendWords = (words: runtime.Word[], text: string, time?: runtime.TimeRange): void => {
+const appendWords = (words: EnrichedWord[], text: string, time?: TimeRange): void => {
   for (const fragment of text.split(/(\p{White_Space}+)/u)) {
     if (fragment) {
-      words.push(SEPARATORS.test(fragment) ? makeWordSpace({ text: fragment }) : makeWordNormal({ text: fragment, time }))
+      words.push(SEPARATORS.test(fragment) ? makeEnrichedWordSpace({ text: fragment }) : makeEnrichedWordNormal({ text: fragment, time }))
     }
   }
 }
 
-const readLine = (body: string, start: number, duration: number): runtime.Line => {
+const readLine = (body: string, start: number, duration: number): EnrichedLine => {
   const time = makeTimeRange({ start, end: start + duration })
   const pieces = scanWordTags(body, WORD_PATTERN)
   if (!pieces.some((piece) => piece.tag !== undefined)) {
-    return /[^\p{White_Space}]/u.test(body) ? makeLineNormal({ time, content: makeLineContentText(body) }) : makeLineInstrumental({ time })
+    return /[^\p{White_Space}]/u.test(body)
+      ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentText(body) })
+      : makeEnrichedLineInstrumental({ time })
   }
 
-  const words: runtime.Word[] = []
+  const words: EnrichedWord[] = []
   for (const piece of pieces) {
     if (piece.tag === undefined) {
       appendWords(words, piece.text)
@@ -143,12 +145,12 @@ const readLine = (body: string, start: number, duration: number): runtime.Line =
     appendWords(words, piece.text, makeTimeRange({ start: wordStart!, end: wordStart! + wordDuration! }))
   }
 
-  return words.some((word) => word.type === WordType.NORMAL)
-    ? makeLineNormal({ time, content: makeLineContentWords(words) })
-    : makeLineInstrumental({ time })
+  return words.some((word) => word.type === EnrichedWordType.NORMAL)
+    ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentWords(words) })
+    : makeEnrichedLineInstrumental({ time })
 }
 
-const readTrack = (text: string, timings?: WeakMap<runtime.Line, AnnotationTiming>) => {
+const readTrack = (text: string, timings?: WeakMap<EnrichedLine, AnnotationTiming>) => {
   const tags: { row: number; tag: LrcMetaTag; unknown?: boolean }[] = []
 
   const native: SourceLine[] = []
@@ -171,7 +173,7 @@ const readTrack = (text: string, timings?: WeakMap<runtime.Line, AnnotationTimin
           row,
           display: true,
           credit: !!display.credit,
-          line: makeLineNormal({ time: makeTimeRange({ start: display.start }), content: makeLineContentText(display.text) }),
+          line: makeEnrichedLineNormal({ time: makeTimeRange({ start: display.start }), content: makeEnrichedLineContentText(display.text) }),
         })
         if (display.credit) {
           const { raw, names } = display.credit
@@ -222,7 +224,7 @@ const readTrack = (text: string, timings?: WeakMap<runtime.Line, AnnotationTimin
   return { entries: entries.filter((entry) => !entry.credit), metaTags }
 }
 
-const readAnnotations = (text: string | undefined, timings: WeakMap<runtime.Line, AnnotationTiming>): runtime.Line[] => {
+const readAnnotations = (text: string | undefined, timings: WeakMap<EnrichedLine, AnnotationTiming>): EnrichedLine[] => {
   return text
     ? readTrack(text, timings)
         .entries.filter((entry) => !entry.display)
@@ -243,7 +245,7 @@ const readAnnotations = (text: string | undefined, timings: WeakMap<runtime.Line
 export const parseYrc = (input: string | YrcParseInput, options: YrcParseOptions = {}): ParseResult => {
   const source = readYrcContent(input)
   if (!source) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID }))
   }
 
   const parsed = readTrack(source.original)
@@ -263,7 +265,7 @@ export const parseYrc = (input: string | YrcParseInput, options: YrcParseOptions
   })
 
   const body = parsed.entries.filter((entry) => !entry.display).map((entry) => entry.line)
-  const timings = new WeakMap<runtime.Line, AnnotationTiming>()
+  const timings = new WeakMap<EnrichedLine, AnnotationTiming>()
   const annotated = attachAnnotations(
     body,
     { translations: readAnnotations(source.translations, timings), romans: readAnnotations(source.romans, timings) },
@@ -282,13 +284,13 @@ export const parseYrc = (input: string | YrcParseInput, options: YrcParseOptions
   })
 
   return finalizeLyric(
-    makeLyric({
+    makeEnrichedLyric({
       format: FORMAT,
-      status: lines.length ? LyricStatus.VALID : LyricStatus.INVALID,
-      timing: lines.some(isWordLevelLine) ? Timing.WORD : Timing.LINE,
+      status: lines.length ? EnrichedLyricStatus.VALID : EnrichedLyricStatus.INVALID,
+      timing: lines.some(hasEnrichedLineWords) ? TimingLevel.WORD : TimingLevel.LINE,
       meta,
       lines,
-      languages: deriveLanguageUsages(lines),
+      languageUsages: deriveEnrichedLanguageUsages(lines),
     }),
   )
 }

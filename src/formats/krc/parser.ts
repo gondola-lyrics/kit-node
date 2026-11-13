@@ -1,62 +1,64 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedWord, Meta, TimeRange, UnknownEntry } from '@gondola-lyrics/model'
 import type { LrcMetaTag } from '../lrc'
 import type { ParseResult } from '../result'
 import type { KrcContent } from './common'
 
 import {
-  LineType,
-  LyricStatus,
-  Timing,
-  deriveLanguageUsages,
-  getWordsText,
-  isWordLevelLine,
-  makeLineAnnotation,
-  makeLineAnnotationRoman,
-  makeLineAnnotationTranslation,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineInstrumental,
-  makeLineNormal,
-  makeLyric,
+  EnrichedLineType,
+  EnrichedLyricStatus,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
+  getEnrichedLineAnnotationRomanText,
+  getEnrichedWordsText,
+  hasEnrichedLineWords,
+  makeEnrichedLineAnnotation,
+  makeEnrichedLineAnnotationRoman,
+  makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineInstrumental,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeTimeRange,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
+
+import { decodeBase64 } from '@root/utils'
 
 import { finalizeLyric } from '../result'
 import { attachRubies, isPlaceholderText, readRubyEntries } from '../qrc'
-import { decodeBase64 } from '@root/utils'
-
 import { META_PATTERN, TAG_PATTERN, readLrc, readLrcMetaTags, scanWordTags } from '../lrc'
 import { FORMAT, LINE_PATTERN, WORD_PATTERN, readKrcContent } from './common'
 
 export type KrcParseInput = KrcContent
 
 export interface KrcReadResult {
-  lines: runtime.Line[]
+  lines: EnrichedLine[]
   metaTags: LrcMetaTag[]
 }
 
 const SEPARATORS = /^\p{White_Space}+$/u
 
-const appendWords = (words: runtime.Word[], text: string, time?: runtime.TimeRange): void => {
+const appendWords = (words: EnrichedWord[], text: string, time?: TimeRange): void => {
   for (const fragment of text.split(/(\p{White_Space}+)/u)) {
     if (!fragment) {
       continue
     }
-    words.push(SEPARATORS.test(fragment) ? makeWordSpace({ text: fragment }) : makeWordNormal({ text: fragment, time }))
+    words.push(SEPARATORS.test(fragment) ? makeEnrichedWordSpace({ text: fragment }) : makeEnrichedWordNormal({ text: fragment, time }))
   }
 }
 
-const readLine = (body: string, start: number, duration: number): runtime.Line => {
+const readLine = (body: string, start: number, duration: number): EnrichedLine => {
   const time = makeTimeRange({ start, end: start + duration })
   const pieces = scanWordTags(body, WORD_PATTERN)
   const tagged = pieces.some((piece) => piece.tag !== undefined)
   if (!tagged) {
-    return body.trim() ? makeLineNormal({ time, content: makeLineContentText(body) }) : makeLineInstrumental({ time })
+    return body.trim() ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentText(body) }) : makeEnrichedLineInstrumental({ time })
   }
 
-  const words: runtime.Word[] = []
+  const words: EnrichedWord[] = []
   for (const piece of pieces) {
     if (piece.tag === undefined) {
       appendWords(words, piece.text)
@@ -67,7 +69,9 @@ const readLine = (body: string, start: number, duration: number): runtime.Line =
     const wordStart = start + offset!
     appendWords(words, piece.text, makeTimeRange({ start: wordStart, end: wordStart + wordDuration! }))
   }
-  return getWordsText(words).trim() ? makeLineNormal({ time, content: makeLineContentWords(words) }) : makeLineInstrumental({ time })
+  return getEnrichedWordsText(words).trim()
+    ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentWords(words) })
+    : makeEnrichedLineInstrumental({ time })
 }
 
 /**
@@ -78,7 +82,7 @@ const readLine = (body: string, start: number, duration: number): runtime.Line =
  * @returns Original-order model lines and metadata tags awaiting interpretation.
  */
 export const readKrc = (text: string): KrcReadResult => {
-  const lines: runtime.Line[] = []
+  const lines: EnrichedLine[] = []
   const metaTags: LrcMetaTag[] = []
   for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n?|\n/)) {
     const line = raw.trimStart()
@@ -101,7 +105,7 @@ export const readKrc = (text: string): KrcReadResult => {
 }
 
 // Only a fully matched kana field is consumed; partial matches keep both the attachment and the source value.
-const attachKana = (lines: runtime.Line[], meta: runtime.Meta): runtime.Line[] => {
+const attachKana = (lines: EnrichedLine[], meta: Meta): EnrichedLine[] => {
   for (const entry of meta.unknowns) {
     if (entry.key !== 'kana') {
       continue
@@ -158,7 +162,7 @@ const readTrack = (value: unknown): LanguageTrack | undefined => {
   return value as unknown as LanguageTrack
 }
 
-const attachTrack = (lines: runtime.Line[], track: LanguageTrack): { lines: runtime.Line[]; complete: boolean } => {
+const attachTrack = (lines: EnrichedLine[], track: LanguageTrack): { lines: EnrichedLine[]; complete: boolean } => {
   let result = lines
   let complete = true
   for (const [index, cells] of track.lyricContent.entries()) {
@@ -172,7 +176,7 @@ const attachTrack = (lines: runtime.Line[], track: LanguageTrack): { lines: runt
       continue
     }
     const line = result[index]!
-    if (line.type === LineType.INSTRUMENTAL) {
+    if (line.type === EnrichedLineType.INSTRUMENTAL) {
       complete = false
       continue
     }
@@ -180,13 +184,17 @@ const attachTrack = (lines: runtime.Line[], track: LanguageTrack): { lines: runt
     const existing = line.annotation?.[kind] ?? []
     const occupied = existing.find((item) => !item.language)
     if (occupied) {
-      complete = complete && occupied.text === text
+      const occupiedText = 'text' in occupied ? occupied.text : getEnrichedLineAnnotationRomanText(occupied)
+      complete = complete && occupiedText === text
       continue
     }
-    const create = track.type === 1 ? makeLineAnnotationTranslation : makeLineAnnotationRoman
+    const item =
+      track.type === 1
+        ? makeEnrichedLineAnnotationTranslation({ text })
+        : makeEnrichedLineAnnotationRoman({ content: makeEnrichedLineAnnotationRomanContentText(text) })
     const annotated = {
       ...line,
-      annotation: makeLineAnnotation({ ...line.annotation, [kind]: [...existing, create({ text })] }),
+      annotation: makeEnrichedLineAnnotation({ ...line.annotation, [kind]: [...existing, item] }),
     }
     if (result === lines) {
       result = lines.slice()
@@ -204,12 +212,12 @@ const attachTrack = (lines: runtime.Line[], track: LanguageTrack): { lines: runt
  *
  * @returns Annotated lines, reusing the original array when no visible content changes.
  */
-const attachKugouLanguage = (lines: runtime.Line[], meta: runtime.Meta): runtime.Line[] => {
+const attachKugouLanguage = (lines: EnrichedLine[], meta: Meta): EnrichedLine[] => {
   if (!lines.length) {
     return lines
   }
   let result = lines
-  const unknowns: runtime.UnknownEntry[] = []
+  const unknowns: UnknownEntry[] = []
   const selected = new Map<number, string[][]>()
   for (const entry of meta.unknowns) {
     const payload = entry.key === 'language' ? readPayload(entry.value) : undefined
@@ -263,7 +271,7 @@ const attachKugouLanguage = (lines: runtime.Line[], meta: runtime.Meta): runtime
 export const parseKrc = (input: string | KrcParseInput): ParseResult => {
   const source = readKrcContent(input)
   if (!source) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID }))
   }
 
   const native = readKrc(source.original)
@@ -272,13 +280,13 @@ export const parseKrc = (input: string | KrcParseInput): ParseResult => {
   const meta = readLrcMetaTags(parsed.metaTags)
   const lines = attachKugouLanguage(attachKana(parsed.lines, meta), meta)
   return finalizeLyric(
-    makeLyric({
+    makeEnrichedLyric({
       format: FORMAT,
-      status: lines.length ? LyricStatus.VALID : LyricStatus.INVALID,
-      timing: lines.some(isWordLevelLine) ? Timing.WORD : Timing.LINE,
+      status: lines.length ? EnrichedLyricStatus.VALID : EnrichedLyricStatus.INVALID,
+      timing: lines.some(hasEnrichedLineWords) ? TimingLevel.WORD : TimingLevel.LINE,
       meta,
       lines,
-      languages: deriveLanguageUsages(lines),
+      languageUsages: deriveEnrichedLanguageUsages(lines),
     }),
   )
 }

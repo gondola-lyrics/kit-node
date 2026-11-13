@@ -1,6 +1,6 @@
 <template>
   <div :class="$style.preview">
-    <section v-if="lyric.format || metadata.length || lyric.languages.length || performers.length" :class="$style.header">
+    <section v-if="lyric.format || metadata.length || lyric.languageUsages.length || performers.length" :class="$style.header">
       <dl :class="$style.rows">
         <template v-if="lyric.format">
           <dt>{{ t('result.format') }}</dt>
@@ -8,18 +8,18 @@
             <span :class="$style.value">{{ lyric.format }}</span>
           </dd>
         </template>
-        <template v-if="lyric.languages.length">
+        <template v-if="lyric.languageUsages.length">
           <dt :class="{ [$style.sectionStart]: lyric.format }">{{ t('result.languages') }}</dt>
           <dd :class="{ [$style.sectionStart]: lyric.format }">
-            <span v-for="(language, index) in lyric.languages" :key="index" :class="$style.value">
+            <span v-for="(language, index) in lyric.languageUsages" :key="index" :class="$style.value">
               <span :class="$style.tag">{{ language.tag }}</span>
-              <span :class="$style.coverage">{{ language.count }} {{ t('result.lineUnit') }}</span>
+              <span :class="$style.coverage">{{ language.lineCount }} {{ t('result.lineUnit') }}</span>
             </span>
           </dd>
         </template>
         <template v-if="performers.length">
-          <dt :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languages.length }]">{{ t('result.agents') }}</dt>
-          <dd :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languages.length }]">
+          <dt :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languageUsages.length }]">{{ t('result.agents') }}</dt>
+          <dd :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languageUsages.length }]">
             <span v-for="(performer, index) in performers" :key="index" :class="[$style.value, { [$style.identifier]: performer.fallback }]">{{
               performer.text
             }}</span>
@@ -48,10 +48,10 @@
 </template>
 
 <script setup lang="ts">
-import type { Lyric, Text } from '@gondola-lyrics/model/runtime'
+import type { EnrichedLyric, Text } from '@gondola-lyrics/model'
 import type { MessageKey } from '../composables/useI18n'
 
-import { CreditRole } from '@gondola-lyrics/model/runtime'
+import { CreditRole } from '@gondola-lyrics/model'
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -73,11 +73,11 @@ const CREDIT_ROLE_LABELS = new Map<CreditRole, MessageKey>([
   [CreditRole.ARRANGER, 'meta.creditArranger'],
   [CreditRole.PRODUCER, 'meta.creditProducer'],
   [CreditRole.PERFORMER, 'meta.creditPerformer'],
-  [CreditRole.MIXER, 'meta.creditMixer'],
-  [CreditRole.MASTERING, 'meta.creditMastering'],
+  [CreditRole.MIXING_ENGINEER, 'meta.creditMixer'],
+  [CreditRole.MASTERING_ENGINEER, 'meta.creditMastering'],
 ])
 
-const props = defineProps<{ lyric: Lyric }>()
+const props = defineProps<{ lyric: EnrichedLyric }>()
 const { t } = useI18n()
 
 const metadata = computed(() => {
@@ -154,7 +154,7 @@ const performers = computed(() => {
   })
 })
 const hasLeadingRows = computed(() => {
-  return Boolean(props.lyric.format) || props.lyric.languages.length > 0 || performers.value.length > 0
+  return Boolean(props.lyric.format) || props.lyric.languageUsages.length > 0 || performers.value.length > 0
 })
 </script>
 

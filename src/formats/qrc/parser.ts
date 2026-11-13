@@ -1,32 +1,32 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedWord, EnrichedWordAnnotationRuby, Meta, TextToken, UnknownEntry } from '@gondola-lyrics/model'
 import type { AnnotationTiming } from '@root/utils'
 import type { ParseResult } from '../result'
 import type { QrcContent } from './common'
 
 import {
-  LineType,
-  LyricStatus,
-  Timing,
-  WordType,
-  deriveLanguageUsages,
-  getContentText,
-  getWordsText,
-  isWordLevelLine,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineInstrumental,
-  makeLineNormal,
-  makeLyric,
+  EnrichedLineType,
+  EnrichedLyricStatus,
+  TimingLevel,
+  EnrichedWordType,
+  deriveEnrichedLanguageUsages,
+  getEnrichedLineContentText,
+  getEnrichedWordsText,
+  hasEnrichedLineWords,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineInstrumental,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeMeta,
   makeText,
   makeTimeRange,
   makeUnknownEntry,
-  makeWordAnnotation,
-  makeWordAnnotationRuby,
-  makeWordAnnotationToken,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordAnnotation,
+  makeEnrichedWordAnnotationRuby,
+  makeTextToken,
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import { attachAnnotations, isTime, mapShared, parseTime } from '@root/utils'
 
@@ -65,11 +65,11 @@ export type QrcParseInput = QrcContent
  */
 export interface RubySource {
   length: number
-  ruby: runtime.WordAnnotationRuby
+  ruby: EnrichedWordAnnotationRuby
 }
 
 interface RubyWord {
-  word: runtime.Word
+  word: EnrichedWord
   length: number
   byOrder: boolean
 }
@@ -90,17 +90,17 @@ const NATIVE_ANNOTATION_TIMING: AnnotationTiming = { precision: 1, rounding: 1 }
 export const readRubyEntries = (value: string): RubySource[] | undefined => {
   const entries: RubySource[] = []
   let length = 0
-  let tokens: runtime.WordAnnotationToken[] = []
+  let tokens: TextToken[] = []
   let text = ''
   let cursor = 0
   const finish = (): boolean => {
     if (text.trim()) {
-      tokens.push(makeWordAnnotationToken({ text }))
+      tokens.push(makeTextToken({ text }))
     }
     if (!length || !tokens.length) {
       return false
     }
-    entries.push({ length, ruby: makeWordAnnotationRuby({ tokens }) })
+    entries.push({ length, ruby: makeEnrichedWordAnnotationRuby({ tokens }) })
     tokens = []
     text = ''
     return true
@@ -123,7 +123,7 @@ export const readRubyEntries = (value: string): RubySource[] | undefined => {
       if (!length || !text.trim() || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
         return undefined
       }
-      tokens.push(makeWordAnnotationToken({ text, time: { start, end } }))
+      tokens.push(makeTextToken({ text, time: { start, end } }))
       text = ''
     } else {
       if (!length) {
@@ -136,9 +136,9 @@ export const readRubyEntries = (value: string): RubySource[] | undefined => {
 }
 
 // QRC consumes every kana tag, damaged or unmatched included; only the first valid reading is used.
-const readRubies = (meta: runtime.Meta): RubySource[] | undefined => {
+const readRubies = (meta: Meta): RubySource[] | undefined => {
   let entries: RubySource[] | undefined
-  const unknowns: runtime.UnknownEntry[] = []
+  const unknowns: UnknownEntry[] = []
   for (const entry of meta.unknowns) {
     if (entry.key === 'kana') {
       entries ??= readRubyEntries(entry.value)
@@ -261,13 +261,13 @@ const matchRubies = (words: (RubyWord | undefined)[], sources: RubySource[]): Ma
  *
  * @returns Annotated rows and matched source indices, preserving unchanged nodes.
  */
-export const attachRubies = (lines: runtime.Line[], sources: RubySource[]): { lines: runtime.Line[]; matched: Set<number> } => {
+export const attachRubies = (lines: EnrichedLine[], sources: RubySource[]): { lines: EnrichedLine[]; matched: Set<number> } => {
   if (!sources.length) {
     return { lines, matched: new Set<number>() }
   }
   const words: (RubyWord | undefined)[] = []
   for (const line of lines) {
-    if (line.type !== LineType.NORMAL) {
+    if (line.type !== EnrichedLineType.NORMAL) {
       continue
     }
     if (line.content?.text && RUBY_WORD_PATTERN.test(line.content.text)) {
@@ -276,7 +276,7 @@ export const attachRubies = (lines: runtime.Line[], sources: RubySource[]): { li
       continue
     }
     for (const word of line.content?.words ?? []) {
-      if (word.type === WordType.NORMAL) {
+      if (word.type === EnrichedWordType.NORMAL) {
         words.push({ word, length: [...word.text].length, byOrder: RUBY_WORD_PATTERN.test(word.text) })
       }
     }
@@ -296,14 +296,14 @@ export const attachRubies = (lines: runtime.Line[], sources: RubySource[]): { li
       if (!ruby) {
         return word
       }
-      return { ...word, annotation: makeWordAnnotation({ ...word.annotation, rubies: [...(word.annotation?.rubies ?? []), ruby] }) }
+      return { ...word, annotation: makeEnrichedWordAnnotation({ ...word.annotation, rubies: [...(word.annotation?.rubies ?? []), ruby] }) }
     })
     return words === content.words ? line : { ...line, content: { ...content, words } }
   })
   return { lines: annotated, matched: new Set(matched.keys()) }
 }
 
-const readMeta = (body: string, meta: runtime.Meta) => {
+const readMeta = (body: string, meta: Meta) => {
   const match = META_PATTERN.exec(body)
   if (!match) {
     return
@@ -349,27 +349,27 @@ const readMeta = (body: string, meta: runtime.Meta) => {
   }
 }
 
-const readTimeRange = (startText: string, durationText: string): NonNullable<runtime.Word['time']> => {
+const readTimeRange = (startText: string, durationText: string): NonNullable<EnrichedWord['time']> => {
   const start = Number(startText)
   return makeTimeRange({ start, end: start + Number(durationText) })
 }
 
-const appendWords = (words: runtime.Word[], text: string, time?: runtime.Word['time']) => {
+const appendWords = (words: EnrichedWord[], text: string, time?: EnrichedWord['time']) => {
   for (const fragment of text.split(/(\p{White_Space}+)/u)) {
     if (!fragment) {
       continue
     }
     if (SEPARATORS.test(fragment)) {
-      words.push(makeWordSpace({ text: fragment }))
+      words.push(makeEnrichedWordSpace({ text: fragment }))
     } else {
       // QRC gives the fragment one range, so whitespace splitting cannot invent finer timing.
-      words.push(makeWordNormal({ text: fragment, time }))
+      words.push(makeEnrichedWordNormal({ text: fragment, time }))
     }
   }
 }
 
-const readWords = (text: string): runtime.Word[] | undefined => {
-  const words: runtime.Word[] = []
+const readWords = (text: string): EnrichedWord[] | undefined => {
+  const words: EnrichedWord[] = []
   let cursor = 0
   let tagged = false
   for (const match of text.matchAll(WORD_PATTERN)) {
@@ -393,8 +393,8 @@ export const isPlaceholderText = (text: string): boolean => {
   return text.trim() === '//'
 }
 
-const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; placeholders: Set<number> } => {
-  const lines: runtime.Line[] = []
+const readLines = (text: string): { lines: EnrichedLine[]; meta: Meta; placeholders: Set<number> } => {
+  const lines: EnrichedLine[] = []
   const meta = makeMeta()
   const placeholders = new Set<number>()
   for (const raw of text.split(/\r\n?|\n/)) {
@@ -404,16 +404,16 @@ const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; p
       const time = readTimeRange(match[1]!, match[2]!)
       const text = line.slice(match[0].length)
       const words = readWords(text)
-      const contentText = (words ? getWordsText(words) : text).trim()
+      const contentText = (words ? getEnrichedWordsText(words) : text).trim()
       const placeholder = isPlaceholderText(contentText)
       if (placeholder) {
         placeholders.add(lines.length)
       }
       if (!contentText || placeholder) {
-        lines.push(makeLineInstrumental({ time }))
+        lines.push(makeEnrichedLineInstrumental({ time }))
       } else {
-        const content = words ? makeLineContentWords(words) : makeLineContentText(text)
-        lines.push(makeLineNormal({ time, content }))
+        const content = words ? makeEnrichedLineContentWords(words) : makeEnrichedLineContentText(text)
+        lines.push(makeEnrichedLineNormal({ time, content }))
       }
       continue
     }
@@ -431,7 +431,7 @@ const readLines = (text: string): { lines: runtime.Line[]; meta: runtime.Meta; p
   return { lines, meta, placeholders }
 }
 
-const readAnnotations = (text: string | null | undefined, timings: WeakMap<runtime.Line, AnnotationTiming>): runtime.Line[] => {
+const readAnnotations = (text: string | null | undefined, timings: WeakMap<EnrichedLine, AnnotationTiming>): EnrichedLine[] => {
   if (!text) {
     return []
   }
@@ -447,7 +447,7 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
   readLrc(text, {
     onLine: (line, timing) => {
       // QRC placeholders must keep both their timing slot and source precision after conversion.
-      const annotation = isPlaceholderText(getContentText(line.content)) ? makeLineInstrumental({ time: line.time }) : line
+      const annotation = isPlaceholderText(getEnrichedLineContentText(line.content)) ? makeEnrichedLineInstrumental({ time: line.time }) : line
       timings.set(annotation, timing)
       lines.push(annotation)
     },
@@ -468,17 +468,17 @@ const readAnnotations = (text: string | null | undefined, timings: WeakMap<runti
 export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions = {}): ParseResult => {
   const source = readContent(input)
   if (!source) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID }))
   }
 
   const parsed = readLines(source.original)
   const meta = parsed.meta
   const rubies = readRubies(meta)
   if (!parsed.lines.length) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta }))
   }
 
-  const timings = new WeakMap<runtime.Line, AnnotationTiming>()
+  const timings = new WeakMap<EnrichedLine, AnnotationTiming>()
 
   const translationText = source.translations && readText(source.translations)
   const translationLines = readAnnotations(translationText, timings)
@@ -506,13 +506,13 @@ export const parseQrc = (input: string | QrcParseInput, options: QrcParseOptions
   // Removing placeholders before alignment would shift annotations at duplicate timestamps.
   const lines = parsed.placeholders.size ? annotated.filter((_, index) => !parsed.placeholders.has(index)) : annotated
   return finalizeLyric(
-    makeLyric({
+    makeEnrichedLyric({
       format: FORMAT,
-      status: lines.length ? LyricStatus.VALID : LyricStatus.INVALID,
-      timing: lines.some(isWordLevelLine) ? Timing.WORD : Timing.LINE,
+      status: lines.length ? EnrichedLyricStatus.VALID : EnrichedLyricStatus.INVALID,
+      timing: lines.some(hasEnrichedLineWords) ? TimingLevel.WORD : TimingLevel.LINE,
       meta,
       lines,
-      languages: deriveLanguageUsages(lines),
+      languageUsages: deriveEnrichedLanguageUsages(lines),
     }),
   )
 }

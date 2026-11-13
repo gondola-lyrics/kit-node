@@ -1,4 +1,12 @@
-import type { runtime } from '@gondola-lyrics/model'
+import type {
+  Agent,
+  EnrichedLine,
+  EnrichedLineAnnotation,
+  EnrichedLineBackground,
+  EnrichedLineContent,
+  EnrichedWord,
+  Meta,
+} from '@gondola-lyrics/model'
 import type { XmlElement } from '@root/utils'
 import type { ParseResult } from '../result'
 import type { TtmlProfile } from './common'
@@ -6,29 +14,30 @@ import type { TtmlProfile } from './common'
 import {
   AgentType,
   CreditRole,
-  LyricStatus,
-  Timing,
-  deriveLanguageUsages,
+  EnrichedLyricStatus,
+  TimingLevel,
+  deriveEnrichedLanguageUsages,
   makeAgent,
-  makeLineAnnotation,
-  makeLineAnnotationRoman,
-  makeLineAnnotationTranslation,
-  makeLineBackground,
-  makeLineContentText,
-  makeLineContentWords,
-  makeLineNormal,
-  makeLyric,
+  makeEnrichedLineAnnotation,
+  makeEnrichedLineAnnotationRoman,
+  makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationTranslation,
+  makeEnrichedLineBackground,
+  makeEnrichedLineContentText,
+  makeEnrichedLineContentWords,
+  makeEnrichedLineNormal,
+  makeEnrichedLyric,
   makeMeta,
   makeMetaCredit,
   makeText,
   makeTimeRange,
   makeUnknownEntry,
-  makeWordAnnotation,
-  makeWordAnnotationRuby,
-  makeWordAnnotationToken,
-  makeWordNormal,
-  makeWordSpace,
-} from '@gondola-lyrics/model/runtime'
+  makeEnrichedWordAnnotation,
+  makeEnrichedWordAnnotationRuby,
+  makeTextToken,
+  makeEnrichedWordNormal,
+  makeEnrichedWordSpace,
+} from '@gondola-lyrics/model'
 
 import {
   XmlNodeType,
@@ -150,12 +159,12 @@ const readAgentType = (raw: string | undefined): { type: AgentType; raw: string 
   }
 }
 
-const readDeclaredTiming = (root: XmlElement): Timing | undefined => {
+const readDeclaredTiming = (root: XmlElement): TimingLevel | undefined => {
   switch (getXmlQualifiedAttribute(root, 'itunes:timing')) {
     case TIMING_WORD:
-      return Timing.WORD
+      return TimingLevel.WORD
     case TIMING_LINE:
-      return Timing.LINE
+      return TimingLevel.LINE
     default:
       return undefined
   }
@@ -215,27 +224,27 @@ const isFormattingWhitespace = (text: string) => {
 /**
  * Builds words from source drafts without deriving missing timestamps.
  */
-const buildWords = (draft: LineDraft): runtime.Word[] => {
-  const words: runtime.Word[] = []
+const buildWords = (draft: LineDraft): EnrichedWord[] => {
+  const words: EnrichedWord[] = []
 
   for (const word of draft.words) {
     if (word.space) {
-      words.push(makeWordSpace({ text: word.text }))
+      words.push(makeEnrichedWordSpace({ text: word.text }))
       continue
     }
 
     const time = word.start === undefined ? undefined : makeTimeRange({ start: word.start, end: word.end })
     if (!word.rubies.length) {
-      words.push(makeWordNormal({ text: word.text, time, language: word.language }))
+      words.push(makeEnrichedWordNormal({ text: word.text, time, language: word.language }))
       continue
     }
 
     const rubies = word.rubies.map((ruby) => {
-      return makeWordAnnotationRuby({
+      return makeEnrichedWordAnnotationRuby({
         time: ruby.start === undefined ? undefined : makeTimeRange({ start: ruby.start, end: ruby.end }),
         language: ruby.language,
         tokens: ruby.tokens.map((token) => {
-          return makeWordAnnotationToken({
+          return makeTextToken({
             text: token.text,
             time: token.start === undefined ? undefined : makeTimeRange({ start: token.start, end: token.end }),
           })
@@ -243,7 +252,7 @@ const buildWords = (draft: LineDraft): runtime.Word[] => {
       })
     })
 
-    words.push(makeWordNormal({ text: word.text, time, language: word.language, annotation: makeWordAnnotation({ rubies }) }))
+    words.push(makeEnrichedWordNormal({ text: word.text, time, language: word.language, annotation: makeEnrichedWordAnnotation({ rubies }) }))
   }
 
   return words
@@ -252,17 +261,17 @@ const buildWords = (draft: LineDraft): runtime.Word[] => {
 /**
  * Builds only annotations explicitly present in the source drafts.
  */
-const buildLineAnnotation = (draft: LineDraft): runtime.LineAnnotation | undefined => {
+const buildLineAnnotation = (draft: LineDraft): EnrichedLineAnnotation | undefined => {
   if (!draft.translations.length && !draft.romans.length) {
     return undefined
   }
 
-  return makeLineAnnotation({
+  return makeEnrichedLineAnnotation({
     translations: draft.translations.map((item) => {
-      return makeLineAnnotationTranslation({ text: item.text, language: item.language })
+      return makeEnrichedLineAnnotationTranslation({ text: item.text, language: item.language })
     }),
     romans: draft.romans.map((item) => {
-      return makeLineAnnotationRoman({ text: item.text, language: item.language })
+      return makeEnrichedLineAnnotationRoman({ content: makeEnrichedLineAnnotationRomanContentText(item.text), language: item.language })
     }),
   })
 }
@@ -583,9 +592,9 @@ const readBackground = (element: XmlElement, preserveSpace: boolean, language?: 
   }
 }
 
-const buildContent = (draft: LineDraft): runtime.LineContent => {
+const buildContent = (draft: LineDraft): EnrichedLineContent => {
   if (draft.wordLevel) {
-    return makeLineContentWords(buildWords(draft))
+    return makeEnrichedLineContentWords(buildWords(draft))
   }
 
   const text = draft.words
@@ -593,17 +602,17 @@ const buildContent = (draft: LineDraft): runtime.LineContent => {
       return word.text
     })
     .join('')
-  return makeLineContentText(draft.preserveSpace ? text : text.trim())
+  return makeEnrichedLineContentText(draft.preserveSpace ? text : text.trim())
 }
 
 /**
  * Builds one background line.
  */
-const buildBackground = (draft: LineDraft): runtime.LineBackground => {
-  return makeLineBackground({
+const buildBackground = (draft: LineDraft): EnrichedLineBackground => {
+  return makeEnrichedLineBackground({
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
-    agents: draft.agentId === undefined ? [] : [draft.agentId],
+    agentIds: draft.agentId === undefined ? [] : [draft.agentId],
     languages: draft.language ? [draft.language] : [],
     content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
@@ -613,11 +622,11 @@ const buildBackground = (draft: LineDraft): runtime.LineBackground => {
 /**
  * Builds one normal line, keeping plain text whole unless the source timed its words.
  */
-const buildLine = (draft: LineDraft): runtime.Line => {
-  return makeLineNormal({
+const buildLine = (draft: LineDraft): EnrichedLine => {
+  return makeEnrichedLineNormal({
     id: draft.key,
     time: makeTimeRange({ start: draft.start, end: draft.end }),
-    agents: draft.agentId === undefined ? [] : [draft.agentId],
+    agentIds: draft.agentId === undefined ? [] : [draft.agentId],
     languages: draft.language ? [draft.language] : [],
     content: buildContent(draft),
     annotation: buildLineAnnotation(draft),
@@ -628,8 +637,8 @@ const buildLine = (draft: LineDraft): runtime.Line => {
 /**
  * Reads the head's agents, which lines reference by id.
  */
-const readAgents = (elements: ElementContext[]): runtime.Agent[] => {
-  const agents: runtime.Agent[] = []
+const readAgents = (elements: ElementContext[]): Agent[] => {
+  const agents: Agent[] = []
   for (const { element, preserveSpace, language } of elements) {
     const id = getXmlQualifiedAttribute(element, 'xml:id') ?? getXmlAttribute(element, 'id')
     if (!id) {
@@ -663,7 +672,7 @@ const readAgents = (elements: ElementContext[]): runtime.Agent[] => {
  *
  * AMLL wraps these in `iTunesMetadata`, so the whole head is searched rather than its direct children.
  */
-const readCredits = (elements: ElementContext[], meta: runtime.Meta) => {
+const readCredits = (elements: ElementContext[], meta: Meta) => {
   const names = elements
     .map(({ element, preserveSpace, language }) => {
       return makeText({ text: readText(element, preserveSpace), language })
@@ -687,7 +696,7 @@ const readCredits = (elements: ElementContext[], meta: runtime.Meta) => {
 /**
  * Reads one `amll:meta` entry, keeping an unknown key as written so a round trip loses nothing.
  */
-const applyAmllMeta = (meta: runtime.Meta, element: XmlElement, language?: string) => {
+const applyAmllMeta = (meta: Meta, element: XmlElement, language?: string) => {
   const key = getXmlAttribute(element, 'key')
   const value = getXmlAttribute(element, 'value')?.trim()
   if (!key || !value) {
@@ -790,7 +799,7 @@ const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap:
 export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {}): ParseResult => {
   const content = readTtmlContent(input)
   if (!content) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: makeMeta() }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
   }
 
   const extra = {
@@ -800,7 +809,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   const document = parseXml(content)
   const root = document ? findXmlElement(document, 'tt') : undefined
   if (!root) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta: makeMeta(), extra }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta(), extra }))
   }
 
   const language = readLanguage(root, lowerTag(options.language))
@@ -846,7 +855,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   attachHeadAnnotations(metadataElements, lineMap, backgroundMap)
 
   if (!drafts.length) {
-    return finalizeLyric(makeLyric({ format: FORMAT, status: LyricStatus.INVALID, meta, extra }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta, extra }))
   }
 
   const lines = drafts.map(buildLine)
@@ -860,14 +869,14 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   })
 
   return finalizeLyric(
-    makeLyric({
+    makeEnrichedLyric({
       format: FORMAT,
-      status: LyricStatus.VALID,
-      timing: readDeclaredTiming(root) ?? (wordLevel ? Timing.WORD : Timing.LINE),
+      status: EnrichedLyricStatus.VALID,
+      timing: readDeclaredTiming(root) ?? (wordLevel ? TimingLevel.WORD : TimingLevel.LINE),
       meta,
       extra,
       agents: readAgents(metadataElements.get('agent') ?? []),
-      languages: deriveLanguageUsages(lines),
+      languageUsages: deriveEnrichedLanguageUsages(lines),
       lines,
     }),
   )

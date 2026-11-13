@@ -1,13 +1,12 @@
-import type { runtime } from '@gondola-lyrics/model'
-import type { Diagnostic } from '@gondola-lyrics/model/runtime'
+import type { Diagnostic, EnrichedLyric } from '@gondola-lyrics/model'
 
-import { canonicalizeLyric, validateLyric } from '@gondola-lyrics/model/runtime'
+import { canonicalizeEnrichedLyric, validateEnrichedLyric } from '@gondola-lyrics/model'
 
 /**
  * A parsed lyric in canonical form, with every rule it breaks.
  */
 export interface ParseResult {
-  lyric: runtime.Lyric
+  lyric: EnrichedLyric
   diagnostics: Diagnostic[]
 }
 
@@ -16,9 +15,9 @@ export interface ParseResult {
  *
  * Canonicalization runs first because validation reports paths against the canonical tree.
  */
-export const finalizeLyric = (input: runtime.Lyric): ParseResult => {
-  const lyric = canonicalizeLyric(input)
-  const diagnostics = validateLyric(lyric)
+export const finalizeLyric = (input: EnrichedLyric): ParseResult => {
+  const lyric = canonicalizeEnrichedLyric(input)
+  const diagnostics = validateEnrichedLyric(lyric)
 
   return { lyric, diagnostics }
 }
