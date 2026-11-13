@@ -76,7 +76,7 @@ const ANNOTATION_KINDS = ['translations', 'romans'] as const
 const XML_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/
 
 const resolveOptions = (lyric: EnrichedLyric, options: TtmlGenerateOptions): ResolvedTtmlGenerateOptions => {
-  const profile = options.profile ?? (lyric.format === FORMAT && lyric.extra.profile === 'itunes' ? 'itunes' : 'amll')
+  const profile = options.profile ?? (lyric.format === FORMAT && lyric.profile === 'itunes' ? 'itunes' : 'amll')
   if (profile !== 'amll' && profile !== 'itunes') {
     throw new Error('Unsupported TTML profile')
   }

@@ -802,14 +802,12 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
   }
 
-  const extra = {
-    profile: readTtmlProfile(content),
-  }
+  const profile = readTtmlProfile(content)
 
   const document = parseXml(content)
   const root = document ? findXmlElement(document, 'tt') : undefined
   if (!root) {
-    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta(), extra }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, profile, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
   }
 
   const language = readLanguage(root, lowerTag(options.language))
@@ -855,7 +853,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   attachHeadAnnotations(metadataElements, lineMap, backgroundMap)
 
   if (!drafts.length) {
-    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta, extra }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, profile, status: EnrichedLyricStatus.INVALID, meta }))
   }
 
   const lines = drafts.map(buildLine)
@@ -871,10 +869,10 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   return finalizeLyric(
     makeEnrichedLyric({
       format: FORMAT,
+      profile,
       status: EnrichedLyricStatus.VALID,
       timing: readDeclaredTiming(root) ?? (wordLevel ? TimingLevel.WORD : TimingLevel.LINE),
       meta,
-      extra,
       agents: readAgents(metadataElements.get('agent') ?? []),
       languageUsages: deriveEnrichedLanguageUsages(lines),
       lines,
