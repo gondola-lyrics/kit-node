@@ -4,7 +4,7 @@ import { EnrichedWordType, makeEnrichedLineContentText, makeEnrichedLineContentW
 
 import { mapShared } from '@root/utils'
 
-import { isCloseBracket, isNormalWord, isOpenBracket } from './utils'
+import { isCloseBracket, isNormalWord, isOpenBracket, resolveTiming } from './utils'
 
 /**
  * Removes one leading bracket from the first sung word and one trailing bracket from the last, so an inner pair stays as written.
@@ -56,9 +56,9 @@ const stripWordEdges = (words: EnrichedWord[]): EnrichedWord[] => {
  * Plain text is read literally, so a source that padded it with spaces keeps them; only word content
  * treats space words as the structural separators they are.
  */
-const stripContentBrackets = (content: EnrichedLineContent | undefined): EnrichedLineContent | undefined => {
+const stripContentBrackets = (content: EnrichedLineContent | undefined): EnrichedLineContent | null => {
   if (!content) {
-    return content
+    return null
   }
 
   if (!content.words.length) {
@@ -71,15 +71,15 @@ const stripContentBrackets = (content: EnrichedLineContent | undefined): Enriche
     if (!start && !end) {
       return content
     }
-    const stripped = text.slice(start, end === 0 ? undefined : end)
-    return stripped ? makeEnrichedLineContentText(stripped) : undefined
+    const stripped = text.slice(start, end === 0 ? text.length : end)
+    return stripped ? makeEnrichedLineContentText(stripped) : null
   }
 
   const words = stripWordEdges(content.words)
   if (words === content.words) {
     return content
   }
-  return words.length ? makeEnrichedLineContentWords(words) : undefined
+  return words.length ? makeEnrichedLineContentWords(words) : null
 }
 
 const stripLineBackgrounds = (line: EnrichedLine): EnrichedLine => {
@@ -91,7 +91,7 @@ const stripLineBackgrounds = (line: EnrichedLine): EnrichedLine => {
   const kept: EnrichedLineBackground[] = []
   for (const background of line.backgrounds) {
     const content = stripContentBrackets(background.content)
-    if (content === background.content) {
+    if (content === (background.content ?? null)) {
       kept.push(background)
       continue
     }
@@ -113,5 +113,5 @@ const stripLineBackgrounds = (line: EnrichedLine): EnrichedLine => {
  */
 export const stripBackgroundBrackets = (lyric: EnrichedLyric): EnrichedLyric => {
   const lines = mapShared(lyric.lines, stripLineBackgrounds)
-  return lines === lyric.lines ? lyric : { ...lyric, lines }
+  return lines === lyric.lines ? lyric : { ...lyric, lines, timing: resolveTiming(lyric, lines) }
 }
