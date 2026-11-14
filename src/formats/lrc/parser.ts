@@ -239,12 +239,13 @@ const readWords = (pieces: WordPiece[], lineStart: number) => {
  */
 const readLine = (text: string, start: number, nextStart: number | undefined) => {
   const trimmed = text.trim()
+  const pieces = splitWordTags(text)
+  const hasText = pieces.some((piece) => piece.text.trim().length > 0)
   let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
-  if (!trimmed) {
+  if (!hasText) {
     return makeEnrichedLineInstrumental({ time: makeTimeRange({ start, end }) })
   }
 
-  const pieces = splitWordTags(text)
   const wordTimed = pieces.some((piece) => !!piece.tag)
   const { drafts, closeSegment } = wordTimed ? readWords(pieces, start) : { drafts: [], closeSegment: () => {} }
 
@@ -390,7 +391,7 @@ const parseLrcText = (text: string): EnrichedLyric => {
 }
 
 /**
- * Empty timed rows become instrumental lines; source order and missing word times remain for model validation.
+ * Timed rows with no text after recognized word tags become instrumental lines; source order and missing word times remain for model validation.
  *
  * Annotation tracks are read as lines too and attached by timestamp, and rows that match no line are dropped.
  * Complete roman tracks attach to words by timing and optional local recovery; other tracks retain their source line text.
