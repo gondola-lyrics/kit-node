@@ -75,8 +75,8 @@ const decodeText = (text: string): string => {
 
     const end = text.indexOf(';', cursor + 1)
     if (end === -1) {
-      cursor += 1
-      continue
+      // No later ampersand can form a complete reference without a semicolon.
+      break
     }
 
     parts.push(text.slice(start, cursor), decodeReference(text.slice(cursor + 1, end)))
