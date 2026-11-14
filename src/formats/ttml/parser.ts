@@ -550,33 +550,39 @@ const readLine = (element: XmlElement, preserveSpace: boolean, language?: string
 }
 
 /**
- * Reads a background line, whose end may stay open because its parent's end covers it.
+ * Word order does not guarantee the earliest start or latest end of a background.
  *
- * A background line states no time of its own in AMLL files, so its range comes from its words.
+ * Explicit boundaries take precedence, and an unknown word end keeps an inferred end open.
  */
-const readBackground = (element: XmlElement, preserveSpace: boolean, language?: string): LineDraft | undefined => {
+const readBackground = (element: XmlElement, preserveSpace: boolean, language?: string): LineDraft | null => {
   preserveSpace = readPreserveSpace(element, preserveSpace)
   language = readLanguage(element, language)
+
   const read = readWords(element, preserveSpace, language)
   if (!read.words.length) {
-    return undefined
+    return null
   }
 
   const begin = getXmlAttribute(element, 'begin')
   const end = getXmlAttribute(element, 'end')
-  const first = read.words.find((word) => {
-    return !word.space && word.start !== undefined
-  })
-  const last = read.words.findLast((word) => {
-    return !word.space && word.start !== undefined
-  })
 
-  const start = begin === undefined ? (first?.start ?? 0) : parseTime(begin)
-  if (start === undefined) {
-    return undefined
+  let wordStart: number | null = null
+  let wordEnd: number | null = 0
+  for (const word of read.words) {
+    if (word.space || word.start === undefined) {
+      continue
+    }
+    wordStart = Math.min(wordStart ?? word.start, word.start)
+    wordEnd = wordEnd === null || word.end === undefined ? null : Math.max(wordEnd, word.end)
   }
 
-  const finish = end === undefined ? last?.end : parseTime(end)
+  const start = begin === undefined ? (wordStart ?? 0) : parseTime(begin)
+  if (start === undefined) {
+    return null
+  }
+
+  const inferredEnd = wordStart === null ? null : wordEnd
+  const finish = end === undefined ? (inferredEnd ?? undefined) : parseTime(end)
 
   return {
     start,
