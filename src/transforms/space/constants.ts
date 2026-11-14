@@ -15,7 +15,7 @@ export const InsertSpacesRules = {
    */
   PUNCTUATION: 'punctuation',
   /**
-   * A quotation mark touching a neighbouring character.
+   * A quotation mark touching a neighbouring character; Latin word-internal apostrophes and leading elisions stay attached.
    */
   QUOTE: 'quote',
   /**

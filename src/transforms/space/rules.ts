@@ -18,12 +18,16 @@ const DIGIT_CJK = new RegExp(`([${DIGIT_RANGE}])([${CJK_RANGE}])`, 'gu')
 const PUNCTUATION = new RegExp(`([${ALL_RANGE}])([!;,\\?:])(?=[${ALL_RANGE}])`, 'gu')
 const QUOTE_BEFORE = new RegExp(`([${CJK_RANGE}${LATIN_RANGE}${DIGIT_RANGE}])(["\`“‘])`, 'gu')
 const QUOTE_AFTER = new RegExp(`(["”’])([${CJK_RANGE}${LATIN_RANGE}${DIGIT_RANGE}])`, 'gu')
+const APOSTROPHE_BEFORE = /^[\p{Script=Latin}\p{M}\p{Decimal_Number}\s\p{Ps}\p{Pi}"'`<]$/u
+const APOSTROPHE_AFTER = /^[\p{Script=Latin}\p{M}\p{Decimal_Number}]/u
 const BRACKET_BEFORE = new RegExp(`([${WORD_RANGE}])([\\[({<])`, 'gu')
 const BRACKET_AFTER = new RegExp(`([\\])}>])([${WORD_RANGE}])`, 'gu')
 const MATH_OPERATOR = new RegExp(`([${ALL_RANGE}])([+=&])(?=[${ALL_RANGE}])`, 'gu')
 const HYPHEN = new RegExp(`(?<=[${WORD_RANGE}])-(?=[${WORD_RANGE}])`, 'gu')
 const SLASH = new RegExp(`([${WORD_RANGE}])(/)(?=[${WORD_RANGE}])`, 'gu')
-const TRIM_INSIDE_SYMBOLS = new RegExp('([<[{"“‘(])\\s*([^<>[\\]{}()"“‘”’]*?)\\s*([>\\]}"”’)])', 'gu')
+const TRIM_SYMBOLS = /[<>[\]{}()"“‘”’]/gu
+const OPEN_SYMBOLS = '<[{"“‘('
+const CLOSE_SYMBOLS = '>]}"”’)'
 const REPEATED_SPACES = / {2,}/gu
 
 // A run of two or more marks belongs together: `a--b`, `a//b`, `a...b`, `a::b` and `a+=b` stay as written.
@@ -38,6 +42,20 @@ const isDigit = (char: string | undefined) => {
 
 const isLatin = (char: string | undefined) => {
   return !!char && ((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z'))
+}
+
+/**
+ * Preserves ambiguous Latin joins and leading elisions instead of guessing whether a right single quote closes a quotation.
+ */
+const isApostrophe = (text: string, offset: number) => {
+  if (text[offset] !== '’') {
+    return false
+  }
+
+  // Two UTF-16 units keep supplementary letters and combining marks intact.
+  const before = [...text.slice(Math.max(0, offset - 2), offset)].at(-1) ?? ''
+  const after = text.slice(offset + 1, offset + 3)
+  return APOSTROPHE_AFTER.test(after) && (offset === 0 || APOSTROPHE_BEFORE.test(before))
 }
 
 /**
@@ -78,9 +96,28 @@ const applySlash = (text: string) => {
  * Trims the spaces just inside a bracket or quotation mark, without touching a nested pair inside it.
  */
 const applyTrimInsideSymbols = (text: string) => {
-  return text.replace(TRIM_INSIDE_SYMBOLS, (match, left: string, inner: string, right: string) => {
-    return `${left}${inner.trim()}${right}`
-  })
+  const result: string[] = []
+  let opening: number | null = null
+  let cursor = 0
+
+  for (const match of text.matchAll(TRIM_SYMBOLS)) {
+    const symbol = match[0]
+    const offset = match.index
+    if (isApostrophe(text, offset)) {
+      continue
+    }
+
+    if (opening !== null && CLOSE_SYMBOLS.includes(symbol)) {
+      result.push(text.slice(cursor, opening + 1), text.slice(opening + 1, offset).trim(), symbol)
+      cursor = offset + 1
+      opening = null
+      continue
+    }
+    opening = OPEN_SYMBOLS.includes(symbol) ? offset : null
+  }
+
+  result.push(text.slice(cursor))
+  return result.join('')
 }
 
 const APPLIERS: Record<InsertSpacesRule, (text: string) => string> = {
@@ -92,7 +129,9 @@ const APPLIERS: Record<InsertSpacesRule, (text: string) => string> = {
   },
   [InsertSpacesRules.PUNCTUATION]: applyPunctuation,
   [InsertSpacesRules.QUOTE]: (text) => {
-    return text.replace(QUOTE_BEFORE, '$1 $2').replace(QUOTE_AFTER, '$1 $2')
+    return text.replace(QUOTE_BEFORE, '$1 $2').replace(QUOTE_AFTER, (match, quote: string, after: string, offset: number, source: string) => {
+      return isApostrophe(source, offset) ? match : `${quote} ${after}`
+    })
   },
   [InsertSpacesRules.BRACKET_OUTSIDE]: (text) => {
     return text.replace(BRACKET_BEFORE, '$1 $2').replace(BRACKET_AFTER, '$1 $2')
