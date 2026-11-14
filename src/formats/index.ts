@@ -21,6 +21,9 @@ import { detectYrc, parseYrc } from './yrc'
  * Unrecognized text returns `undefined`.
  */
 export const detectFormat = (input: unknown): LyricFormat | undefined => {
+  if (detectTtml(input)) {
+    return 'ttml'
+  }
   if (detectKrc(input)) {
     return 'krc'
   }
@@ -36,10 +39,6 @@ export const detectFormat = (input: unknown): LyricFormat | undefined => {
   if (detectLrc(input)) {
     return 'lrc'
   }
-  if (detectTtml(input)) {
-    return 'ttml'
-  }
-
   return undefined
 }
 

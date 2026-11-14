@@ -1,34 +1,34 @@
 import { XmlNodeType, parseXml } from '@root/utils'
 
-import { AMLL_HINT_PATTERN, ITUNES_HINT_PATTERN, readTtmlContent } from './common'
+import { readTtmlContent } from './common'
 
 /**
- * Recognition needs a profile hint, since plain TTML says nothing about which profile wrote it.
+ * Recognizes a readable XML document with one `tt` root and only whitespace text outside it.
  *
- * A bare `tt` root also counts, which is what a hand-written document has.
- * This is a format probe, not a validity check, so an input of another shape is simply not TTML.
+ * The root may carry a namespace prefix, and lyric content need not be valid for recognition.
  */
-export const detectTtml = (input: unknown) => {
+export const detectTtml = (input: unknown): boolean => {
   const content = readTtmlContent(input)
-  if (!content) {
+  if (!content || !/^\s*</.test(content)) {
     return false
   }
 
-  if (AMLL_HINT_PATTERN.test(content) || ITUNES_HINT_PATTERN.test(content)) {
-    return true
-  }
-
-  // A document without a hint still counts when its root is a tt element.
-  const root = parseXml(content)
-  if (!root) {
+  const document = parseXml(content)
+  if (!document) {
     return false
   }
 
-  for (const child of root.children) {
-    if (child.nodeType === XmlNodeType.element && child.localName === 'tt') {
-      return true
+  let foundRoot = false
+  for (const child of document.children) {
+    if (child.nodeType === XmlNodeType.element) {
+      if (foundRoot || child.localName !== 'tt') {
+        return false
+      }
+      foundRoot = true
+    } else if (child.nodeType !== XmlNodeType.text || child.text.trim()) {
+      return false
     }
   }
 
-  return false
+  return foundRoot
 }

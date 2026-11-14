@@ -4,12 +4,12 @@ import { readLrcContent } from './common'
 import { TAG_PATTERN } from './utils'
 
 /**
- * A single readable time tag is enough for recognition; metadata alone is not.
+ * A readable time tag recognizes plaintext lyrics, excluding XML containers and metadata-only input.
  * This is a format probe, not a validity check, so an input of another shape is simply not LRC.
  */
-export const detectLrc = (input: unknown) => {
+export const detectLrc = (input: unknown): boolean => {
   const content = readLrcContent(input)
-  if (!content) {
+  if (!content || /^\s*</.test(content.original)) {
     return false
   }
 
