@@ -282,18 +282,24 @@ const buildLineAnnotation = (draft: LineDraft): EnrichedLineAnnotation | undefin
 const splitBackgroundText = (element: XmlElement, preserveSpace: boolean, language?: string) => {
   preserveSpace = readPreserveSpace(element, preserveSpace)
   language = readLanguage(element, language)
+
   let main = ''
-  const backgrounds: { text: string; key: string | undefined; language: string | undefined }[] = []
+  const backgrounds: { text: string; key: string | undefined; language: string | undefined; preserveSpace: boolean }[] = []
 
   for (const child of element.children) {
     if (child.nodeType === XmlNodeType.element && child.localName === 'span' && getXmlAttribute(child, 'role') === ROLE_BACKGROUND) {
-      backgrounds.push({ text: readText(child, preserveSpace), key: getXmlAttribute(child, 'for'), language: readLanguage(child, language) })
+      backgrounds.push({
+        text: readText(child, preserveSpace),
+        key: getXmlAttribute(child, 'for'),
+        language: readLanguage(child, language),
+        preserveSpace: readPreserveSpace(child, preserveSpace),
+      })
       continue
     }
     main += getXmlTextContent(child)
   }
 
-  return { main: preserveSpace ? main : main.trim(), backgrounds }
+  return { main: preserveSpace ? main : main.trim(), backgrounds, preserveSpace }
 }
 
 /**
@@ -732,9 +738,23 @@ const applyAmllMeta = (meta: Meta, element: XmlElement, language?: string) => {
 }
 
 /**
+ * Replacement text has no word alignment, so source word timing and ruby cannot be transferred.
+ */
+const replaceLineText = (draft: LineDraft, text: string, preserveSpace: boolean, language: string | undefined): void => {
+  draft.words = splitWords(text, language)
+  draft.wordLevel = false
+  draft.preserveSpace = preserveSpace
+  draft.language = language
+}
+
+const hasWordTiming = (draft: LineDraft): boolean => {
+  return draft.wordLevel || draft.backgrounds.some((background) => background.wordLevel)
+}
+
+/**
  * Attaches head translations and transliterations to the lines they name by `itunes:key`.
  *
- * A replacement translation rewrites the line's text, which is how a source swaps one script for another.
+ * Replacement translations rewrite the text of both the lead and its referenced backgrounds.
  */
 const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap: Map<string, LineDraft>, backgroundMap: Map<string, LineDraft>) => {
   if (!lineMap.size) {
@@ -744,6 +764,7 @@ const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap:
   const attach = (blocks: ElementContext[], kind: 'translation' | 'roman') => {
     for (const { element: block, preserveSpace, language } of blocks) {
       const type = getXmlQualifiedAttribute(block, 'type') ?? getXmlAttribute(block, 'type')
+      const replacement = kind === 'translation' && type === 'replacement'
 
       for (const text of getXmlChildElements(block, 'text')) {
         const key = getXmlAttribute(text, 'for')
@@ -753,23 +774,17 @@ const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap:
         }
 
         const textLanguage = readLanguage(text, language)
-        const { main, backgrounds } = splitBackgroundText(text, preserveSpace, textLanguage)
-        if (kind === 'translation' && type === 'replacement') {
-          if (main) {
-            line.words = splitWords(main, textLanguage)
-            line.wordLevel = false
-            line.preserveSpace = readPreserveSpace(text, preserveSpace)
-            line.language = textLanguage
-          }
-          continue
-        }
-
+        const { main, backgrounds, preserveSpace: textSpace } = splitBackgroundText(text, preserveSpace, textLanguage)
         if (main) {
-          const item = { language: textLanguage, text: main }
-          if (kind === 'translation') {
-            line.translations.push(item)
+          if (replacement) {
+            replaceLineText(line, main, textSpace, textLanguage)
           } else {
-            line.romans.push(item)
+            const item = { language: textLanguage, text: main }
+            if (kind === 'translation') {
+              line.translations.push(item)
+            } else {
+              line.romans.push(item)
+            }
           }
         }
 
@@ -779,6 +794,10 @@ const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap:
           }
           const target = background.key ? backgroundMap.get(background.key) : undefined
           if (!target) {
+            continue
+          }
+          if (replacement) {
+            replaceLineText(target, background.text, background.preserveSpace, background.language)
             continue
           }
           const item = { language: background.language, text: background.text }
@@ -856,6 +875,7 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     }
   }
 
+  const hadWordTiming = drafts.some(hasWordTiming)
   attachHeadAnnotations(metadataElements, lineMap, backgroundMap)
 
   if (!drafts.length) {
@@ -863,21 +883,20 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
   }
 
   const lines = drafts.map(buildLine)
-  const wordLevel = drafts.some((draft) => {
-    return (
-      draft.wordLevel ||
-      draft.backgrounds.some((background) => {
-        return background.wordLevel
-      })
-    )
-  })
+  const wordLevel = drafts.some(hasWordTiming)
+  const declaredTiming = readDeclaredTiming(root)
+  // A replacement can remove the last timed word without changing the source's timing declaration.
+  const timing =
+    declaredTiming === TimingLevel.WORD && hadWordTiming && !wordLevel
+      ? TimingLevel.LINE
+      : (declaredTiming ?? (wordLevel ? TimingLevel.WORD : TimingLevel.LINE))
 
   return finalizeLyric(
     makeEnrichedLyric({
       format: FORMAT,
       profile,
       status: EnrichedLyricStatus.VALID,
-      timing: readDeclaredTiming(root) ?? (wordLevel ? TimingLevel.WORD : TimingLevel.LINE),
+      timing,
       meta,
       agents: readAgents(metadataElements.get('agent') ?? []),
       languageUsages: deriveEnrichedLanguageUsages(lines),
