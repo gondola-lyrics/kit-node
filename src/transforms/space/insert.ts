@@ -1,20 +1,29 @@
-import type { EnrichedLineAnnotation, EnrichedLineBackground, EnrichedLineContent, EnrichedLyric, EnrichedWord } from '@gondola-lyrics/model'
+import type {
+  EnrichedLineAnnotation,
+  EnrichedLineBackground,
+  EnrichedLineContent,
+  EnrichedLyric,
+  EnrichedWord,
+  TextToken,
+} from '@gondola-lyrics/model'
 import type { InsertSpacesRule } from './constants'
 
 import {
   EnrichedLineType,
+  EnrichedWordType,
   getEnrichedLineAnnotationRomanText,
   makeEnrichedLineAnnotationRoman,
   makeEnrichedLineAnnotationRomanContentText,
+  makeEnrichedLineAnnotationRomanContentTokens,
   makeEnrichedLineAnnotationTranslation,
   makeEnrichedLineContentText,
   makeEnrichedLineContentWords,
   makeEnrichedWordSpace,
+  makeTextToken,
 } from '@gondola-lyrics/model'
 
 import { mapShared } from '@root/utils'
 
-import { isNormalWord } from '../background/utils'
 import { insertSpaces, resolveRules } from './rules'
 
 export interface InsertSpacesOptions {
@@ -30,75 +39,163 @@ export interface InsertSpacesOptions {
   annotations?: boolean
 }
 
+interface AlignedText {
+  text: string
+  source: number | null
+  space: boolean
+}
+
+const WHITESPACE = /[\p{White_Space}\uFEFF]/u
+const TRAILING_PUNCTUATION = /^[\p{Pe}\p{Pf}\p{Po}]+$/u
+
 /**
- * Maps the rewritten text back onto the original words.
- *
- * Every non-space character of the original survives in order, so walking both strings keeps each word's time,
- * language and annotation while the inserted spaces become their own words.
- * A word whose characters stay adjacent in the rewrite is kept whole, so only a word the space actually cuts is split.
+ * Retains source ownership while changing whitespace; a null source belongs to a newly inserted separator.
  */
-const alignWords = (words: EnrichedWord[], text: string) => {
-  const source = words.filter(isNormalWord)
-  const result: EnrichedWord[] = []
-  let cursor = 0
+const alignTexts = (texts: string[], text: string): AlignedText[] | null => {
+  const original = texts.join('')
+  const parts: AlignedText[] = []
+  let from = 0
+  let to = 0
+  let source = 0
+  let boundary = texts[0]?.length ?? 0
 
-  const takeSpaces = () => {
-    let spaces = ''
-    while (text[cursor] === ' ') {
-      spaces += ' '
-      cursor += 1
+  const readSource = (offset: number): number | null => {
+    while (source < texts.length && offset >= boundary) {
+      source += 1
+      boundary += texts[source]?.length ?? 0
     }
-    return spaces
+    return source < texts.length ? source : null
   }
 
-  for (const word of source) {
-    const spaces = takeSpaces()
-    if (spaces) {
-      result.push(makeEnrichedWordSpace({ text: spaces }))
-    }
-
-    // A word the rewrite left intact keeps its identity, including any annotation and emphasis.
-    if (text.startsWith(word.text, cursor)) {
-      result.push(word)
-      cursor += word.text.length
-      continue
-    }
-
-    // The rewrite split this word, so each piece carries the slice it stands for.
-    let remaining = word.text
-    while (remaining) {
-      let taken = 0
-      while (taken < remaining.length && text[cursor + taken] === remaining[taken]) {
-        taken += 1
-      }
-      if (taken === 0) {
-        return undefined
-      }
-      result.push({ ...word, text: remaining.slice(0, taken) })
-      cursor += taken
-      remaining = remaining.slice(taken)
-      if (!remaining) {
-        break
-      }
-      const split = takeSpaces()
-      if (!split) {
-        // Nothing separates the pieces, so the rewrite changed more than spacing.
-        return undefined
-      }
-      result.push(makeEnrichedWordSpace({ text: split }))
+  const append = (char: string, owner: number | null, space: boolean) => {
+    const previous = parts.at(-1)
+    if (previous && previous.source === owner && previous.space === space) {
+      previous.text += char
+    } else {
+      parts.push({ text: char, source: owner, space })
     }
   }
 
-  const tail = takeSpaces()
-  if (tail) {
-    result.push(makeEnrichedWordSpace({ text: tail }))
+  while (from < original.length || to < text.length) {
+    let whitespace = from
+    while (from < original.length && WHITESPACE.test(original[from]!)) {
+      from += 1
+    }
+    while (to < text.length && WHITESPACE.test(text[to]!)) {
+      while (whitespace < from && original[whitespace] !== text[to]) {
+        whitespace += 1
+      }
+      const owner = whitespace < from ? readSource(whitespace++) : null
+      append(text[to]!, owner, true)
+      to += 1
+    }
+    if (from === original.length && to === text.length) {
+      break
+    }
+    if (from >= original.length || to >= text.length || original[from] !== text[to]) {
+      return null
+    }
+    const owner = readSource(from)
+    if (owner === null) {
+      return null
+    }
+    append(text[to]!, owner, false)
+    from += 1
+    to += 1
   }
 
-  // A leftover character means the rewrite changed something other than spacing, so the caller keeps the original words.
-  if (cursor !== text.length) {
-    return undefined
+  const trailing = new Set<number>()
+  let beforeInsertedSpace = false
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const part = parts[index]!
+    if (part.space) {
+      beforeInsertedSpace = part.source === null
+    } else if (beforeInsertedSpace && TRAILING_PUNCTUATION.test(part.text)) {
+      trailing.add(index)
+    } else {
+      beforeInsertedSpace = false
+    }
+  }
+
+  const result: AlignedText[] = []
+  for (const [index, part] of parts.entries()) {
+    const previous = result.at(-1)
+    const adjacent = index > 0 && !parts[index - 1]!.space
+    if (adjacent && previous && !previous.space && trailing.has(index)) {
+      previous.text += part.text
+    } else if (previous && part.source !== null && previous.source === part.source) {
+      previous.text += part.text
+      previous.space = previous.space && part.space
+    } else {
+      result.push(part)
+    }
   }
   return result
+}
+
+const alignWords = (words: EnrichedWord[], text: string): EnrichedWord[] | null => {
+  const parts = alignTexts(
+    words.map((word) => word.text),
+    text,
+  )
+  if (!parts) {
+    return null
+  }
+
+  const retained = new Set(parts.map((part) => part.source))
+  const losesData = words.some((word, index) => {
+    return !retained.has(index) && !!(word.time || word.language || word.annotation || word.emphasis)
+  })
+  if (losesData) {
+    return null
+  }
+
+  return parts.map((part) => {
+    const word = part.source === null ? null : words[part.source]!
+    if (!word) {
+      return makeEnrichedWordSpace({ text: part.text })
+    }
+    if (word.type === EnrichedWordType.SPACE) {
+      return part.text === word.text ? word : makeEnrichedWordSpace({ text: part.text })
+    }
+    return part.text === word.text ? word : { ...word, text: part.text }
+  })
+}
+
+const alignRomanTokens = (tokens: TextToken[], text: string): TextToken[] | null => {
+  const parts = alignTexts(
+    tokens.map((token) => token.text),
+    text,
+  )
+  if (!parts) {
+    return null
+  }
+
+  const retained = new Set(parts.map((part) => part.source))
+  const losesData = tokens.some((token, index) => {
+    return !retained.has(index) && (token.time !== undefined || Object.keys(token.extra).length > 0)
+  })
+  if (losesData) {
+    return null
+  }
+
+  const result: TextToken[] = []
+  for (const part of parts) {
+    if (part.source === null) {
+      const previous = result.at(-1)
+      const last = previous ? ([...previous.text.slice(-2)].at(-1) ?? '') : ''
+      if (part.space && previous && TRAILING_PUNCTUATION.test(last)) {
+        result[result.length - 1] = { ...previous, text: previous.text + part.text }
+      } else {
+        result.push(makeTextToken({ text: part.text }))
+      }
+      continue
+    }
+    const token = tokens[part.source]!
+    result.push(part.text === token.text ? token : { ...token, text: part.text })
+  }
+
+  return result.some((token) => token.time !== undefined) ? result : null
 }
 
 /**
@@ -115,7 +212,8 @@ const applyToWords = (content: EnrichedLineContent, rules: Set<InsertSpacesRule>
   if (!words) {
     return content
   }
-  return words.length ? makeEnrichedLineContentWords(words) : undefined
+
+  return words.length ? makeEnrichedLineContentWords(words) : null
 }
 
 /**
@@ -127,7 +225,8 @@ const applyToText = (content: EnrichedLineContent, rules: Set<InsertSpacesRule>)
   if (rewritten === text) {
     return content
   }
-  return rewritten ? makeEnrichedLineContentText(rewritten) : undefined
+
+  return rewritten ? makeEnrichedLineContentText(rewritten) : null
 }
 
 /**
@@ -135,7 +234,7 @@ const applyToText = (content: EnrichedLineContent, rules: Set<InsertSpacesRule>)
  */
 const applyToContent = (content: EnrichedLineContent | undefined, rules: Set<InsertSpacesRule>) => {
   if (!content) {
-    return content
+    return null
   }
   return content.words.length ? applyToWords(content, rules) : applyToText(content, rules)
 }
@@ -145,36 +244,42 @@ const applyToContent = (content: EnrichedLineContent | undefined, rules: Set<Ins
  */
 const applyToAnnotation = (annotation: EnrichedLineAnnotation | undefined, rules: Set<InsertSpacesRule>) => {
   if (!annotation) {
-    return annotation
+    return null
   }
 
-  let changed = false
-  const romans = annotation.romans.map((item) => {
+  const romans = mapShared(annotation.romans, (item) => {
     const original = getEnrichedLineAnnotationRomanText(item)
     const text = insertSpaces(original, rules)
     if (text === original) {
       return item
     }
-    changed = true
+    if (item.content?.tokens.length) {
+      if (item.content.text !== undefined) {
+        return item
+      }
+      const tokens = alignRomanTokens(item.content.tokens, text)
+      return tokens ? { ...item, content: makeEnrichedLineAnnotationRomanContentTokens(tokens) } : item
+    }
     return makeEnrichedLineAnnotationRoman({ ...item, content: makeEnrichedLineAnnotationRomanContentText(text) })
   })
-  const translations = annotation.translations.map((item) => {
+  const translations = mapShared(annotation.translations, (item) => {
     const text = insertSpaces(item.text, rules)
     if (text === item.text) {
       return item
     }
-    changed = true
     return makeEnrichedLineAnnotationTranslation({ ...item, text })
   })
-  return changed ? { ...annotation, romans, translations } : annotation
+  return romans === annotation.romans && translations === annotation.translations ? annotation : { ...annotation, romans, translations }
 }
 
 /**
  * Inserts the spaces a source left out, so CJK text set against Latin letters, digits or punctuation reads evenly.
  *
  * A word-level line keeps every word's time and annotation: an inserted space becomes its own space word,
- * and a word the rules split yields one word per character, all sharing the original range.
- * A plain-text line and the annotation tracks are rewritten as whole strings.
+ * and split fragments share their source range while closing punctuation joins the preceding text.
+ * Roman token tracks retain source timing and attributes; inserted spaces after punctuation join that token.
+ * Other inserted spaces remain separate untimed tokens.
+ * A track whose source data cannot survive the rewrite is kept unchanged.
  *
  * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
  */
@@ -183,8 +288,8 @@ export const insertSpacesInLines = (lyric: EnrichedLyric, options: InsertSpacesO
   const annotations = options.annotations ?? true
 
   const applyToBackground = (background: EnrichedLineBackground): EnrichedLineBackground => {
-    const content = applyToContent(background.content, rules)
-    const annotation = annotations ? applyToAnnotation(background.annotation, rules) : background.annotation
+    const content = applyToContent(background.content, rules) ?? undefined
+    const annotation = annotations ? (applyToAnnotation(background.annotation, rules) ?? undefined) : background.annotation
     if (content === background.content && annotation === background.annotation) {
       return background
     }
@@ -196,8 +301,8 @@ export const insertSpacesInLines = (lyric: EnrichedLyric, options: InsertSpacesO
       return line
     }
 
-    const content = applyToContent(line.content, rules)
-    const annotation = annotations ? applyToAnnotation(line.annotation, rules) : line.annotation
+    const content = applyToContent(line.content, rules) ?? undefined
+    const annotation = annotations ? (applyToAnnotation(line.annotation, rules) ?? undefined) : line.annotation
     const backgrounds = mapShared(line.backgrounds, applyToBackground)
     if (content === line.content && annotation === line.annotation && backgrounds === line.backgrounds) {
       return line
