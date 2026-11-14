@@ -20,7 +20,7 @@ import {
   makeEnrichedWordSpace,
 } from '@gondola-lyrics/model'
 
-import { attachAnnotations, isTime, parseTime } from '@root/utils'
+import { attachAnnotations, parseTime } from '@root/utils'
 
 import { finalizeLyric } from '../result'
 import { FORMAT, readLrcContent } from './common'
@@ -93,34 +93,19 @@ const readLineTiming = (tag: string): LrcLineTiming => {
   return { precision: clock ? 10 ** Math.max(0, 3 - (clock[1]?.length ?? 0)) : 1 }
 }
 
-const readMeta = (body: string) => {
+const readMeta = (body: string): LrcMetaTag | null => {
   const match = META_PATTERN.exec(body)
   if (!match) {
-    return undefined
+    return null
   }
 
   return { key: (match[1] ?? '').toLowerCase(), value: (match[2] ?? '').trim() }
 }
 
-const readGroup = (tags: string[], text: string, row: number, timed: TimedLine[], meta: LrcMetaTag[], options: LrcReadOptions) => {
-  for (const tag of tags) {
-    const start = isTime(tag) ? parseTime(tag) : undefined
-    if (start !== undefined) {
-      timed.push({ text, start, tag, row })
-      continue
-    }
-
-    const pair = readMeta(tag)
-    if (pair) {
-      meta.push(pair)
-      options.onMeta?.(pair, row)
-    }
-  }
-}
-
 /**
  * Stacked timestamps share the following text, as in `[00:10][00:20]twice`.
- * Text before the first tag is discarded because it has no timing association.
+ * Metadata belongs only to the leading tag sequence; other brackets remain literal between timestamps.
+ * Text before the first timestamp is discarded because it has no timing association.
  */
 const readTimedLines = (text: string, options: LrcReadOptions) => {
   const timed: TimedLine[] = []
@@ -132,26 +117,45 @@ const readTimedLines = (text: string, options: LrcReadOptions) => {
       continue
     }
 
-    const matches = [...line.matchAll(TAG_PATTERN)]
-    let group: string[] = []
+    let group: { start: number; tag: string }[] = []
+    let cursor = 0
+    let metadata = true
 
-    for (const [index, match] of matches.entries()) {
-      const at = match.index + match[0].length
-      const next = matches[index + 1]?.index ?? line.length
-      const shared = line.slice(at, next)
-
-      group.push(match[1] ?? '')
-
-      if (!shared.trim()) {
+    for (const match of line.matchAll(TAG_PATTERN)) {
+      const tag = match[1] ?? ''
+      const start = parseTime(tag) ?? null
+      if (start !== null) {
+        metadata = false
+        const shared = line.slice(cursor, match.index)
+        if (group.length && shared.trim()) {
+          for (const time of group) {
+            timed.push({ ...time, text: shared, row })
+          }
+          group = []
+        }
+        group.push({ start, tag })
+        cursor = match.index + match[0].length
         continue
       }
 
-      readGroup(group, shared, row, timed, meta, options)
-      group = []
+      // Leaving the cursor at the last accepted tag keeps rejected brackets in the lyric text.
+      if (!metadata) {
+        continue
+      }
+      const pair = line.slice(cursor, match.index).trim() ? null : readMeta(tag)
+      if (!pair) {
+        metadata = false
+        continue
+      }
+      meta.push(pair)
+      options.onMeta?.(pair, row)
+      cursor = match.index + match[0].length
     }
 
     // Trailing timestamps still represent empty timed lines.
-    readGroup(group, '', row, timed, meta, options)
+    for (const time of group) {
+      timed.push({ ...time, text: line.slice(cursor), row })
+    }
   }
 
   return { timed, meta }
