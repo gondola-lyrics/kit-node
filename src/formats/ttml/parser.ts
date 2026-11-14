@@ -715,35 +715,47 @@ const readCredits = (elements: ElementContext[], meta: Meta) => {
 }
 
 /**
- * Reads one `amll:meta` entry, keeping an unknown key as written so a round trip loses nothing.
+ * Unknown metadata has no normalization contract, so its decoded keys and values stay intact.
  */
 const applyAmllMeta = (meta: Meta, element: XmlElement, language?: string) => {
   const key = getXmlAttribute(element, 'key')
-  const value = getXmlAttribute(element, 'value')?.trim()
-  if (!key || !value) {
+  const rawValue = getXmlAttribute(element, 'value')
+  if (key === undefined || rawValue === undefined) {
     return
   }
 
-  language = readLanguage(element, language)
+  let field: 'titles' | 'artists' | 'albums' | 'isrcs' | 'authors'
   switch (key) {
     case 'musicName':
-      meta.titles.push(makeText({ text: value, language }))
-      return
+      field = 'titles'
+      break
     case 'artists':
-      meta.artists.push(makeText({ text: value, language }))
-      return
+      field = 'artists'
+      break
     case 'album':
-      meta.albums.push(makeText({ text: value, language }))
-      return
+      field = 'albums'
+      break
     case 'isrc':
-      meta.isrcs.push(value)
-      return
+      field = 'isrcs'
+      break
     case 'ttmlAuthorGithubLogin':
-      meta.authors.push(makeText({ text: value, language }))
-      return
+      field = 'authors'
+      break
     default:
-      meta.unknowns.push(makeUnknownEntry({ key, value }))
+      meta.unknowns.push(makeUnknownEntry({ key, value: rawValue }))
+      return
   }
+
+  const value = rawValue.trim()
+  if (!value) {
+    return
+  }
+
+  if (field === 'isrcs') {
+    meta.isrcs.push(value)
+    return
+  }
+  meta[field].push(makeText({ text: value, language: readLanguage(element, language) }))
 }
 
 /**
