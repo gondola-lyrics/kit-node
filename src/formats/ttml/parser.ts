@@ -545,7 +545,7 @@ const readLine = (element: XmlElement, preserveSpace: boolean, language?: string
   for (const span of getXmlChildElements(element, 'span')) {
     const role = getXmlAttribute(span, 'role')
     if (role === ROLE_BACKGROUND) {
-      const background = readBackground(span, preserveSpace, language)
+      const background = readBackground(span, time, preserveSpace, language)
       if (background) {
         draft.backgrounds.push(background)
       }
@@ -558,9 +558,15 @@ const readLine = (element: XmlElement, preserveSpace: boolean, language?: string
 /**
  * Word order does not guarantee the earliest start or latest end of a background.
  *
- * Explicit boundaries take precedence, and an unknown word end keeps an inferred end open.
+ * Explicit boundaries take precedence, and the parent supplies missing bounds only without timed words.
+ * An unknown word end keeps an inferred end open.
  */
-const readBackground = (element: XmlElement, preserveSpace: boolean, language?: string): LineDraft | null => {
+const readBackground = (
+  element: XmlElement,
+  parentTime: Pick<LineDraft, 'start' | 'end'>,
+  preserveSpace: boolean,
+  language?: string,
+): LineDraft | null => {
   preserveSpace = readPreserveSpace(element, preserveSpace)
   language = readLanguage(element, language)
 
@@ -582,17 +588,20 @@ const readBackground = (element: XmlElement, preserveSpace: boolean, language?: 
     wordEnd = wordEnd === null || word.end === undefined ? null : Math.max(wordEnd, word.end)
   }
 
-  const start = begin === undefined ? (wordStart ?? 0) : parseTime(begin)
-  if (start === undefined) {
+  const start = begin === undefined ? (wordStart ?? parentTime.start) : (parseTime(begin) ?? null)
+  if (start === null) {
     return null
   }
 
-  const inferredEnd = wordStart === null ? null : wordEnd
-  const finish = end === undefined ? (inferredEnd ?? undefined) : parseTime(end)
+  const inferredEnd = wordStart === null ? (parentTime.end ?? null) : wordEnd
+  const finish = end === undefined ? inferredEnd : (parseTime(end) ?? null)
+  if (end !== undefined && finish === null) {
+    return null
+  }
 
   return {
     start,
-    end: finish,
+    end: finish ?? undefined,
     agentId: getXmlAttribute(element, 'agent'),
     key: getXmlAttribute(element, 'key'),
     words: read.words,
