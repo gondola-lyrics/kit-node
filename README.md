@@ -84,6 +84,15 @@ parseLrc(generate(lyric, 'lrc')) // round-trips
 
 `generateLrc` is the same thing without the dispatch step.
 
+Romanizations match by language and scheme, ignoring case. If one language uses multiple schemes across the exported lines or TTML backgrounds, generation throws until `romanScheme` selects one:
+
+```ts
+generate(lyric, 'lrc', { romanScheme: 'hepburn' })
+generate(lyric, 'ttml', { profile: 'itunes', romanScheme: 'hepburn' })
+```
+
+Omit `romanScheme` to keep unambiguous schemes, or use `''` to select only unspecified schemes. A missing match omits that source's romanization. Scheme labels are not stored in LRC or either TTML profile; the source model retains them.
+
 ### Detect
 
 ```ts

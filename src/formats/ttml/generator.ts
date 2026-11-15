@@ -1,4 +1,4 @@
-import type { EnrichedLine, EnrichedLineBackground, EnrichedLyric, EnrichedWord, Meta, Text, TimeRange } from '@gondola-lyrics/model'
+import type { EnrichedLine, EnrichedLineBackground, EnrichedLyric, EnrichedWord, LineRomanView, Meta, Text, TimeRange } from '@gondola-lyrics/model'
 import type { XmlElement, XmlNode } from '@root/utils'
 import type { TtmlProfile } from './common'
 
@@ -13,7 +13,7 @@ import {
   resolveEnrichedWordAnnotationTokenTime,
 } from '@gondola-lyrics/model'
 
-import { createXmlElement, createXmlText, getLineRomans, serializeXml } from '@root/utils'
+import { createXmlElement, createXmlText, getExportRomans, lowerTag, serializeXml } from '@root/utils'
 
 import { FORMAT, NAMESPACE_AMLL, NAMESPACE_ITUNES, NAMESPACE_ITUNES_METADATA } from './common'
 import {
@@ -45,6 +45,12 @@ export interface TtmlGenerateOptions {
    * Agents and annotation tracks are retained because the body references them.
    */
   includeMeta?: boolean
+  /**
+   * Selects a romanization scheme without case; an empty string selects unspecified schemes.
+   * Omitting this option keeps all schemes, throwing when one language has more than one across lines or backgrounds.
+   * A missing match omits romanization for that source, and neither profile retains scheme labels.
+   */
+  romanScheme?: string
 }
 
 type SungLine = EnrichedLine | EnrichedLineBackground
@@ -55,13 +61,14 @@ type AnnotationKind = 'translations' | 'romans'
 
 type AnnotationTracks = Map<string | undefined, Map<EnrichedLine, XmlNode[]>>
 
-type ResolvedTtmlGenerateOptions = Required<TtmlGenerateOptions>
+type ResolvedTtmlGenerateOptions = Required<Omit<TtmlGenerateOptions, 'romanScheme'>> & { romanScheme: string | null }
 
 interface RenderContext {
   profile: TtmlProfile
   offset: number
   keys: Map<SungLine, string>
   agents: Map<string, string>
+  romans: Map<SungLine, LineRomanView[]>
 }
 
 const NAMESPACE_TTML = 'http://www.w3.org/ns/ttml'
@@ -78,7 +85,7 @@ const resolveOptions = (lyric: EnrichedLyric, options: TtmlGenerateOptions): Res
     throw new Error('Unsupported TTML profile')
   }
 
-  return { profile, includeMeta: options.includeMeta ?? true, indent: options.indent ?? false }
+  return { profile, includeMeta: options.includeMeta ?? true, indent: options.indent ?? false, romanScheme: options.romanScheme ?? null }
 }
 
 /**
@@ -115,7 +122,7 @@ const makeIdAllocator = (ids: string[]) => {
 /**
  * Shares one mapping between declarations, body lines, and annotation references.
  */
-const makeContext = (lyric: EnrichedLyric, lines: EnrichedLine[], profile: TtmlProfile): RenderContext => {
+const makeContext = (lyric: EnrichedLyric, lines: EnrichedLine[], profile: TtmlProfile, romanScheme: string | null): RenderContext => {
   const ids = lyric.agents.map((agent) => {
     return agent.id
   })
@@ -143,7 +150,11 @@ const makeContext = (lyric: EnrichedLyric, lines: EnrichedLine[], profile: TtmlP
     }
   }
 
-  return { profile, offset: lyric.meta?.offset ?? 0, keys, agents }
+  const romans = getExportRomans<SungLine>(
+    lines.flatMap((line) => [line, ...line.backgrounds]),
+    romanScheme,
+  )
+  return { profile, offset: lyric.meta?.offset ?? 0, keys, agents, romans }
 }
 
 /**
@@ -253,12 +264,12 @@ const renderContent = (line: SungLine, context: RenderContext): XmlNode[] => {
 /**
  * Keeps annotations outside the sung word stream.
  */
-const renderInlineAnnotations = (line: SungLine, language?: string): XmlElement[] => {
+const renderInlineAnnotations = (line: SungLine, context: RenderContext, language?: string): XmlElement[] => {
   const nodes: XmlElement[] = []
   for (const item of line.annotation?.translations ?? []) {
     nodes.push(createXmlElement('span', [['ttm:role', ROLE_TRANSLATION], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
-  for (const item of getLineRomans(line)) {
+  for (const item of context.romans.get(line) ?? []) {
     nodes.push(createXmlElement('span', [['ttm:role', ROLE_ROMAN], ...renderLanguage(item.language, language)], [createXmlText(item.text)]))
   }
   return nodes
@@ -295,7 +306,7 @@ const createLyricElement = (name: string, attributes: Attributes, children: XmlN
 const renderBackground = (line: EnrichedLineBackground, context: RenderContext) => {
   const children = renderContent(line, context)
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line, getLineLanguage(line)))
+    children.push(...renderInlineAnnotations(line, context, getLineLanguage(line)))
   }
 
   return createXmlElement('span', [['ttm:role', ROLE_BACKGROUND], ...renderLineAttributes(line, context)], children)
@@ -315,7 +326,7 @@ const renderLine = (line: EnrichedLine, context: RenderContext) => {
 
   const children = [...before, ...renderContent(line, context), ...after]
   if (context.profile === 'amll') {
-    children.push(...renderInlineAnnotations(line, getLineLanguage(line)))
+    children.push(...renderInlineAnnotations(line, context, getLineLanguage(line)))
   }
   return createLyricElement('p', renderLineAttributes(line, context), children)
 }
@@ -414,10 +425,10 @@ const renderAnnotationTracks = (tracks: AnnotationTracks, kind: AnnotationKind, 
 const renderHeadAnnotations = (lines: EnrichedLine[], context: RenderContext): XmlElement[] => {
   const tracks: Record<AnnotationKind, AnnotationTracks> = { translations: new Map(), romans: new Map() }
   const append = (source: SungLine, line: EnrichedLine, background?: EnrichedLineBackground) => {
-    const annotation = { translations: source.annotation?.translations ?? [], romans: getLineRomans(source) }
+    const annotation = { translations: source.annotation?.translations ?? [], romans: context.romans.get(source) ?? [] }
     for (const kind of ANNOTATION_KINDS) {
       for (const item of annotation[kind]) {
-        const language = item.language?.toLowerCase()
+        const language = lowerTag(item.language)
         let track = tracks[kind].get(language)
         if (!track) {
           track = new Map()
@@ -497,6 +508,7 @@ const renderRootAttributes = (lyric: EnrichedLyric, profile: TtmlProfile): Attri
  * Offsets are baked into timestamps; a negative result or a missing required time throws.
  * Profile mappings retain the lead agent and first AMLL ruby, omitting unsupported fields and instrumental nodes.
  * Word romanizations are emitted as line text without their token timing.
+ * Multiple schemes for one language require an explicit romanScheme selection before export.
  */
 export const generateTtml = (lyric: EnrichedLyric, options: TtmlGenerateOptions = {}): TtmlGenerateResult => {
   if (lyric.timing !== TimingLevel.LINE && lyric.timing !== TimingLevel.WORD) {
@@ -507,7 +519,7 @@ export const generateTtml = (lyric: EnrichedLyric, options: TtmlGenerateOptions 
   const lines = lyric.lines.filter((line) => {
     return line.type !== EnrichedLineType.INSTRUMENTAL
   })
-  const context = makeContext(lyric, lines, resolved.profile)
+  const context = makeContext(lyric, lines, resolved.profile, resolved.romanScheme)
   const metadata = renderMetadata(lyric, lines, context, resolved.includeMeta)
   const paragraphs = lines.map((line) => {
     return renderLine(line, context)

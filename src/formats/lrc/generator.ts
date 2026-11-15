@@ -9,7 +9,7 @@ import {
   resolveEnrichedWordAnnotationTokenTime,
 } from '@gondola-lyrics/model'
 
-import { formatTime, getLineRomans, lowerTag } from '@root/utils'
+import { formatTime, getExportRomans, getRomanVariantKey } from '@root/utils'
 
 export type LrcGenerateResult = LrcContent
 
@@ -30,9 +30,15 @@ export interface LrcGenerateOptions {
   includeWordEnd?: boolean
   /** Emit instrumental lines as a timestamp with no text; defaults to `true`. */
   includeInstrumental?: boolean
+  /**
+   * Selects a romanization scheme without case; an empty string selects unspecified schemes.
+   * Omitting this option keeps all schemes, throwing when one language has more than one across the exported lines.
+   * A missing match omits romanization for that line, and LRC does not retain scheme labels.
+   */
+  romanScheme?: string
 }
 
-type LrcGenerateOptionsRequired = Required<LrcGenerateOptions>
+type LrcGenerateOptionsRequired = Required<Omit<LrcGenerateOptions, 'romanScheme'>> & { romanScheme: string | null }
 
 const resolveOptions = (options: LrcGenerateOptions = {}): LrcGenerateOptionsRequired => {
   return {
@@ -41,6 +47,7 @@ const resolveOptions = (options: LrcGenerateOptions = {}): LrcGenerateOptionsReq
     includeMeta: options.includeMeta ?? true,
     includeWordEnd: options.includeWordEnd ?? false,
     includeInstrumental: options.includeInstrumental ?? true,
+    romanScheme: options.romanScheme ?? null,
   }
 }
 
@@ -86,7 +93,7 @@ const renderSyllableText = (line: EnrichedLine, options: LrcGenerateOptionsRequi
     .join('')
 }
 
-const renderWordRomans = (line: EnrichedLine, language: string | undefined, options: LrcGenerateOptionsRequired): string => {
+const renderWordRomans = (line: EnrichedLine, variant: string, options: LrcGenerateOptionsRequired): string => {
   const pieces: { text: string; time: TimeRange | undefined }[] = []
   let spaced = false
   for (const word of line.content?.words ?? []) {
@@ -94,7 +101,7 @@ const renderWordRomans = (line: EnrichedLine, language: string | undefined, opti
       spaced = true
       continue
     }
-    const roman = word.annotation?.romans.find((item) => lowerTag(item.language) === language)
+    const roman = word.annotation?.romans.find((item) => getRomanVariantKey(item) === variant) ?? null
     if (!roman || !getEnrichedWordAnnotationItemText(roman)) {
       continue
     }
@@ -194,15 +201,19 @@ const renderAnnotationRows = (lines: EnrichedLine[], options: LrcGenerateOptions
 
 const renderRomanRows = (lines: EnrichedLine[], options: LrcGenerateOptionsRequired): string[] => {
   const rows: string[] = []
+  const romans = getExportRomans(
+    lines.filter((line) => line.time?.start !== undefined),
+    options.romanScheme,
+  )
   for (const line of lines) {
     const start = line.time?.start
     if (start === undefined) {
       continue
     }
-    const explicit = new Set((line.annotation?.romans ?? []).map((item) => lowerTag(item.language)))
-    for (const item of getLineRomans(line)) {
-      const language = lowerTag(item.language)
-      const text = options.wordTiming === 'none' || explicit.has(language) ? item.text : renderWordRomans(line, language, options)
+    const explicit = new Set((line.annotation?.romans ?? []).map(getRomanVariantKey))
+    for (const item of romans.get(line) ?? []) {
+      const variant = getRomanVariantKey(item)
+      const text = options.wordTiming === 'none' || explicit.has(variant) ? item.text : renderWordRomans(line, variant, options)
       rows.push(`${renderTimeTag(start, options)}${text}`)
     }
   }
@@ -225,7 +236,8 @@ const joinBlocks = (header: string[], body: string[]) => {
  * Generates the LRC text plus the annotations a single file cannot hold.
  *
  * Word tags appear only for a word-timed lyric when `wordTiming` is not `none`; otherwise every line stays whole.
- * Word romanizations retain token boundaries; explicit line romanizations take precedence for the same language.
+ * Word romanizations retain token boundaries; explicit line romanizations take precedence for the same language and scheme.
+ * Multiple schemes for one language require an explicit romanScheme selection before export.
  */
 export const generateLrc = (lyric: EnrichedLyric, options: LrcGenerateOptions = {}): LrcGenerateResult => {
   const resolved = resolveOptions(options)

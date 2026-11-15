@@ -127,7 +127,14 @@ const readText = (line: EnrichedLine) => {
 }
 
 /**
- * Returns display views of explicit roman tracks and word aggregations, preferring explicit entries for the same language.
+ * Matches the model's case-insensitive variant identity without reserving a separator in scheme names.
+ */
+export const getRomanVariantKey = (item: Pick<LineRomanView, 'language' | 'scheme'>): string => {
+  return JSON.stringify([lowerTag(item.language) ?? null, lowerTag(item.scheme) ?? null])
+}
+
+/**
+ * Returns display views of explicit roman tracks and word aggregations, preferring explicit entries for the same language and scheme.
  *
  * Views must not be stored as source annotations.
  */
@@ -135,9 +142,42 @@ export const getLineRomans = (line: Pick<EnrichedLine, 'content' | 'annotation'>
   const explicit = (line.annotation?.romans ?? []).map((item) => {
     return { language: item.language, scheme: item.scheme, text: getEnrichedLineAnnotationRomanText(item) }
   })
-  const languages = new Set(explicit.map((item) => lowerTag(item.language)))
-  const derived = deriveEnrichedLineRomanViews(line.content).filter((item) => !languages.has(lowerTag(item.language)))
+  const variants = new Set(explicit.map(getRomanVariantKey))
+  const derived = deriveEnrichedLineRomanViews(line.content).filter((item) => !variants.has(getRomanVariantKey(item)))
   return derived.length ? [...explicit, ...derived] : explicit
+}
+
+/**
+ * Selects export views and rejects schemes that would become indistinguishable when their labels are omitted.
+ *
+ * A null scheme keeps all candidates; an empty scheme selects only unspecified schemes.
+ * Checks each language across all supplied sources, including any backgrounds the writer exports.
+ */
+export const getExportRomans = <Line extends Pick<EnrichedLine, 'content' | 'annotation'>>(
+  lines: readonly Line[],
+  scheme: string | null,
+): Map<Line, LineRomanView[]> => {
+  const result = new Map<Line, LineRomanView[]>()
+  const schemes = new Map<string, string>()
+  const wanted = scheme?.toLowerCase() ?? ''
+
+  for (const line of lines) {
+    const views = getLineRomans(line).filter((item) => {
+      return scheme === null || (lowerTag(item.scheme) ?? '') === wanted
+    })
+    for (const item of views) {
+      const language = lowerTag(item.language) ?? ''
+      const current = lowerTag(item.scheme) ?? ''
+      const previous = schemes.get(language) ?? null
+      if (previous !== null && previous !== current) {
+        throw new Error(`Multiple romanization schemes for language ${JSON.stringify(language)}; set romanScheme to select one`)
+      }
+      schemes.set(language, current)
+    }
+    result.set(line, views)
+  }
+
+  return result
 }
 
 const readWordRange = (word: EnrichedWord): TimeRange | undefined => {

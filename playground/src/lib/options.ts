@@ -41,8 +41,9 @@ export interface PlaygroundOptions {
     spaces: Required<Omit<InsertSpacesOptions, 'rules'>> & { enabled: boolean; rules: InsertSpacesRule[] }
   }
   generate: {
-    lrc: Required<LrcGenerateOptions>
-    ttml: Omit<Required<TtmlGenerateOptions>, 'profile'> & { profile: 'auto' | NonNullable<TtmlGenerateOptions['profile']> }
+    lrc: Required<Omit<LrcGenerateOptions, 'romanScheme'>> & Pick<LrcGenerateOptions, 'romanScheme'>
+    ttml: Required<Omit<TtmlGenerateOptions, 'profile' | 'romanScheme'>> &
+      Pick<TtmlGenerateOptions, 'romanScheme'> & { profile: 'auto' | NonNullable<TtmlGenerateOptions['profile']> }
   }
 }
 
@@ -80,8 +81,9 @@ export const createOptions = (): PlaygroundOptions => {
         includeMeta: true,
         includeWordEnd: false,
         includeInstrumental: true,
+        romanScheme: undefined,
       },
-      ttml: { profile: 'auto', indent: false, includeMeta: true },
+      ttml: { profile: 'auto', indent: false, includeMeta: true, romanScheme: undefined },
     },
   }
 }
@@ -290,11 +292,13 @@ export const readOptions = (value: unknown): PlaygroundOptions => {
         includeMeta: readBoolean(lrcGenerate.includeMeta, defaults.generate.lrc.includeMeta),
         includeWordEnd: readBoolean(lrcGenerate.includeWordEnd, defaults.generate.lrc.includeWordEnd),
         includeInstrumental: readBoolean(lrcGenerate.includeInstrumental, defaults.generate.lrc.includeInstrumental),
+        romanScheme: typeof lrcGenerate.romanScheme === 'string' ? lrcGenerate.romanScheme : undefined,
       },
       ttml: {
         profile: readChoice(ttmlGenerate.profile, ['auto', 'amll', 'itunes'], defaults.generate.ttml.profile),
         indent: readBoolean(ttmlGenerate.indent, defaults.generate.ttml.indent),
         includeMeta: readBoolean(ttmlGenerate.includeMeta, defaults.generate.ttml.includeMeta),
+        romanScheme: typeof ttmlGenerate.romanScheme === 'string' ? ttmlGenerate.romanScheme : undefined,
       },
     },
   }
