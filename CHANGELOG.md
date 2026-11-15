@@ -1,3 +1,36 @@
+## v0.7.0 (2026-11-16)
+
+### Fixes
+
+- **transform-space:** return input unchanged with empty rules ([2f1edfc](https://github.com/gondola-lyrics/kit-node/commit/2f1edfc95247e54116980cf93020b03c843e7171))
+- **transform-space:** preserve segments when inserting spaces ([b474a17](https://github.com/gondola-lyrics/kit-node/commit/b474a1712987bcd4fcdef5803c41add9f107928c))
+- **transform-space:** preserve apostrophes in space insertion and symbol trimming ([0bc23e6](https://github.com/gondola-lyrics/kit-node/commit/0bc23e648a84b8e7028d6204a45941ca34d5bd70))
+- **format-krc:** detect language payloads by decoded json structure ([145a2fa](https://github.com/gondola-lyrics/kit-node/commit/145a2fa24952f7a005dcd13c381842334c0348a6))
+- **format-lrc:** infer line ends from the next start time ([2ea67ab](https://github.com/gondola-lyrics/kit-node/commit/2ea67abe2aaa4ffcedd999538be57f6b7c74526f))
+- **format-lrc:** treat empty timed rows as instrumental breaks ([334cf6e](https://github.com/gondola-lyrics/kit-node/commit/334cf6ea0b12068a23be7aadfac2111676f98e23))
+- **format-lrc:** split lyrics only on timed tags ([5c6c958](https://github.com/gondola-lyrics/kit-node/commit/5c6c9581229f93c16a16a63f1932b8398318f5b9))
+- **format-ttml:** detect profile from xml namespaces and metadata ([cb91588](https://github.com/gondola-lyrics/kit-node/commit/cb91588a42dee6ce45516fc81b7f1212294f75bb))
+- **format-ttml:** preserve raw unknown metadata values ([df2a695](https://github.com/gondola-lyrics/kit-node/commit/df2a6954565a6bb594b6c06f30d8bb5f26a1b1b9))
+- **format-ttml:** detect by document structure instead of keywords ([8081cf8](https://github.com/gondola-lyrics/kit-node/commit/8081cf8f143d8b3800f2a3df9ce4b4c6573b769f))
+- **format-ttml:** fall back to parent line for missing background bounds ([79a8e23](https://github.com/gondola-lyrics/kit-node/commit/79a8e238ea3d21bb430dea08787534ab97f6690e))
+- **format-ttml:** update backgrounds from replacement text ([b4316f9](https://github.com/gondola-lyrics/kit-node/commit/b4316f99c43ead43355967d80056eb008c00c119))
+- **format-ttml:** derive background range from all word times ([31708f4](https://github.com/gondola-lyrics/kit-node/commit/31708f4ccebce26b778926098e5584eb394354d8))
+- **utils:** stop entity scanning when no semicolon remains ([61d4108](https://github.com/gondola-lyrics/kit-node/commit/61d41089f8fdefc159ff6fe748f14077aa2a8281))
+- **transform-credit:** avoid exponential label matching ([4016746](https://github.com/gondola-lyrics/kit-node/commit/40167468009111158ff478884f088831e681d63d))
+- **transform-background:** preserve background data and timing ([97db12c](https://github.com/gondola-lyrics/kit-node/commit/97db12cba4f7297424a5fd4ba11535e941e3763f))
+- treat whitespace-only qrc and krc rows as instrumental ([214c9c6](https://github.com/gondola-lyrics/kit-node/commit/214c9c617b8b5e394b1b20ca76f8cec61dad8779))
+- distinguish romanization schemes during export ([c3e523f](https://github.com/gondola-lyrics/kit-node/commit/c3e523f813094391a5a6b2c8b7c1d68656222f10))
+
+### Refactoring
+
+- **utils:** decode base64 into utf-8 text ([26ace02](https://github.com/gondola-lyrics/kit-node/commit/26ace02cf6d3ad70bb632d58907133116e451c25))
+- **format-ttml:** move profile into lyric field ([35d86a8](https://github.com/gondola-lyrics/kit-node/commit/35d86a838caff0671ee70d07bbe3e32ff86e1d3c))
+- migrate data model to 2.0.0 ([3349770](https://github.com/gondola-lyrics/kit-node/commit/334977040906db3174583f80012e2b1cfc8a3e8d))
+
+### Documentation
+
+- update supported formats and file extensions ([8d23462](https://github.com/gondola-lyrics/kit-node/commit/8d2346278dd91c5e385aacbaa7c072e7ae01f377))
+
 ## v0.6.0 (2026-11-07)
 
 ### Features
