@@ -1,6 +1,6 @@
 import type { LrcMetaTag } from '../lrc'
 
-import { decodeBase64 } from '@root/utils'
+import { decodeBase64AsText } from '@root/utils'
 
 import { META_PATTERN } from '../lrc'
 
@@ -44,12 +44,12 @@ export const readKrcMetaTag = (body: string): LrcMetaTag | null => {
  * Recognizes the Kugou container independently of JSON formatting while leaving track support to the parser.
  */
 export const readKrcLanguagePayload = (value: string): Record<string, unknown> | null => {
-  const bytes = decodeBase64(value)
-  if (!bytes) {
+  const text = decodeBase64AsText(value)
+  if (text === null) {
     return null
   }
   try {
-    const payload: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+    const payload: unknown = JSON.parse(text)
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return null
     }
