@@ -152,7 +152,7 @@ const commandBump = (version: string | undefined) => {
   runScript('bump-version', [version])
   runScript('build-change-log', [version])
 
-  run('git', ['add', 'package.json', 'CHANGELOG.md'])
+  run('git', ['add', 'package.json', 'package-lock.json', 'CHANGELOG.md'])
   run('git', ['commit', '-m', `release: v${version}`])
   run('git', ['tag', tag])
   console.log(`release: tagged ${tag}; push the commit and the tag to publish`)

@@ -1,7 +1,15 @@
 import { readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { MANIFEST, fail, isSemanticVersion } from './utils'
+import { MANIFEST, PACKAGE_ROOT, fail, isSemanticVersion } from './utils'
+
+type Lockfile = {
+  version: string
+  packages?: Record<string, { version?: string }>
+}
+
+const LOCKFILE = resolve(PACKAGE_ROOT, 'package-lock.json')
 
 const main = () => {
   const { positionals } = parseArgs({ allowPositionals: true })
@@ -21,9 +29,19 @@ const main = () => {
     return fail(`package.json is already ${version}`)
   }
 
+  const lockfile = JSON.parse(readFileSync(LOCKFILE, 'utf8')) as Lockfile
+  lockfile.version = version
+
+  const rootPackage = lockfile.packages?.['']
+  if (rootPackage !== undefined) {
+    rootPackage.version = version
+  }
+
   // Only the version field is rewritten, so formatting elsewhere in the manifest survives untouched.
   writeFileSync(MANIFEST, text.replace(/("version":\s*)"[^"]*"/, `$1"${version}"`))
-  console.log(`package.json: ${version}`)
+  writeFileSync(LOCKFILE, `${JSON.stringify(lockfile, null, 2)}\n`)
+
+  console.log(`package.json, package-lock.json: ${version}`)
 }
 
 main()
