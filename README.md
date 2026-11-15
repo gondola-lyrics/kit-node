@@ -10,10 +10,19 @@ npm install @gondola-lyrics/kit
 
 ## Supports
 
-| Format | Line level | Word level | Annotation | Meta |
-| ------ | ---------- | ---------- | ---------- | ---- |
-| LRC    | ✅         | ✅         | ✅         | ✅   |
-| TTML   | ✅         | ✅         | ✅         | ✅   |
+| Format | Ext                       | Line level | Word level | Annotation | Meta |
+| ------ | ------------------------- | ---------- | ---------- | ---------- | ---- |
+| LRC    | `.lrc`, `.elrc`, `.eslrc` | ✅         | ✅         | ✅         | ✅   |
+| QRC    | `.qrc`                    | ✅         | ✅         | ✅         | ✅   |
+| KRC    | `.krc`                    | ✅         | ✅         | ✅         | ✅   |
+| KWRC   | `.lrc`, `.txt`            | ✅         | ✅         | ✅         | ✅   |
+| YRC    | `.yrc`                    | ✅         | ✅         | ✅         | ✅   |
+| TTML   | `.ttml`                   | ✅         | ✅         | ✅         | ✅   |
+
+All listed formats support parsing. Generation is available for LRC and TTML.
+
+Format detection reads the original content.
+QRC accepts plaintext or QRC XML, KRC requires decrypted plaintext, and KWRC requires decoded plaintext. KWRC is this kit's name for Kuwo lyric text; `.lrc` and `.txt` are examples for saving it.
 
 ## Usage
 
