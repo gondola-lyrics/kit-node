@@ -6,10 +6,10 @@ import type { KrcContent } from './common'
 import {
   EnrichedLineType,
   EnrichedLyricStatus,
+  EnrichedWordType,
   TimingLevel,
   deriveEnrichedLanguageUsages,
   getEnrichedLineAnnotationRomanText,
-  getEnrichedWordsText,
   hasEnrichedLineWords,
   makeEnrichedLineAnnotation,
   makeEnrichedLineAnnotationRoman,
@@ -51,9 +51,12 @@ const appendWords = (words: EnrichedWord[], text: string, time?: TimeRange): voi
 const readLine = (body: string, start: number, duration: number): EnrichedLine => {
   const time = makeTimeRange({ start, end: start + duration })
   const pieces = scanWordTags(body, WORD_PATTERN)
+
   const tagged = pieces.some((piece) => piece.tag !== undefined)
   if (!tagged) {
-    return body.trim() ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentText(body) }) : makeEnrichedLineInstrumental({ time })
+    return /[^\p{White_Space}]/u.test(body)
+      ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentText(body) })
+      : makeEnrichedLineInstrumental({ time })
   }
 
   const words: EnrichedWord[] = []
@@ -67,7 +70,7 @@ const readLine = (body: string, start: number, duration: number): EnrichedLine =
     const wordStart = start + offset!
     appendWords(words, piece.text, makeTimeRange({ start: wordStart, end: wordStart + wordDuration! }))
   }
-  return getEnrichedWordsText(words).trim()
+  return words.some((word) => word.type === EnrichedWordType.NORMAL)
     ? makeEnrichedLineNormal({ time, content: makeEnrichedLineContentWords(words) })
     : makeEnrichedLineInstrumental({ time })
 }

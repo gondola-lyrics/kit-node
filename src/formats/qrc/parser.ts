@@ -404,12 +404,12 @@ const readLines = (text: string): { lines: EnrichedLine[]; meta: Meta; placehold
       const time = readTimeRange(match[1]!, match[2]!)
       const text = line.slice(match[0].length)
       const words = readWords(text)
-      const contentText = (words ? getEnrichedWordsText(words) : text).trim()
+      const contentText = words ? getEnrichedWordsText(words) : text
       const placeholder = isPlaceholderText(contentText)
       if (placeholder) {
         placeholders.add(lines.length)
       }
-      if (!contentText || placeholder) {
+      if (!/[^\p{White_Space}]/u.test(contentText) || placeholder) {
         lines.push(makeEnrichedLineInstrumental({ time }))
       } else {
         const content = words ? makeEnrichedLineContentWords(words) : makeEnrichedLineContentText(text)
