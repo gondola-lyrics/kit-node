@@ -42,9 +42,7 @@ export default defineConfig({
     rollupOptions: {
       // Match entry modules by absolute path to avoid treating unrelated relative imports as public entries.
       external: (id) => {
-        return (
-          /^@gondola-lyrics\/model/.test(id) || /^@bufbuild\/protobuf/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator')
-        )
+        return /^@gondola-lyrics\/model/.test(id) || id === resolve(src, 'parser') || id === resolve(src, 'generator')
       },
       // Allow shared modules in entry chunks to avoid emitting extra shared chunks.
       preserveEntrySignatures: 'allow-extension',
