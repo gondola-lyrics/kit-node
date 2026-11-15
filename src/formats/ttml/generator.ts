@@ -15,7 +15,7 @@ import {
 
 import { createXmlElement, createXmlText, getLineRomans, serializeXml } from '@root/utils'
 
-import { FORMAT } from './common'
+import { FORMAT, NAMESPACE_AMLL, NAMESPACE_ITUNES, NAMESPACE_ITUNES_METADATA } from './common'
 import {
   ROLE_BACKGROUND,
   ROLE_ROMAN,
@@ -32,7 +32,7 @@ export type TtmlGenerateResult = string
 
 export interface TtmlGenerateOptions {
   /**
-   * Defaults to the source TTML profile, or `amll` when the lyric came from another format.
+   * Defaults to the recognized source TTML profile, or `amll` when none is known.
    */
   profile?: TtmlProfile
   /**
@@ -67,9 +67,6 @@ interface RenderContext {
 const NAMESPACE_TTML = 'http://www.w3.org/ns/ttml'
 const NAMESPACE_TTML_METADATA = 'http://www.w3.org/ns/ttml#metadata'
 const NAMESPACE_TTML_STYLING = 'http://www.w3.org/ns/ttml#styling'
-const NAMESPACE_ITUNES = 'http://itunes.apple.com/lyric-ttml-extensions'
-const NAMESPACE_ITUNES_METADATA = 'http://music.apple.com/lyric-ttml-internal'
-const NAMESPACE_AMLL = 'http://www.example.com/ns/amll'
 
 const ANNOTATION_KINDS = ['translations', 'romans'] as const
 

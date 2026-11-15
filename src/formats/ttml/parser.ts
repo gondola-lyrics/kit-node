@@ -53,7 +53,7 @@ import {
 } from '@root/utils'
 
 import { finalizeLyric } from '../result'
-import { FORMAT, AMLL_HINT_PATTERN, readTtmlContent } from './common'
+import { FORMAT, NAMESPACE_AMLL, NAMESPACE_ITUNES, NAMESPACE_ITUNES_METADATA, readTtmlContent } from './common'
 import {
   ROLE_BACKGROUND,
   ROLE_ROMAN,
@@ -124,8 +124,78 @@ const METADATA_NAMES = ['agent', 'songwriter', 'meta', 'translation', 'translite
 
 const WORD_SEPARATOR_PATTERN = /\p{White_Space}/u
 
-const readTtmlProfile = (source: string): TtmlProfile => {
-  return AMLL_HINT_PATTERN.test(source) ? 'amll' : 'itunes'
+const readNamespaces = (element: XmlElement, inherited: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
+  let namespaces: Map<string, string> | null = null
+  for (const attribute of element.attributes) {
+    let prefix: string
+    if (attribute.qualifiedName === 'xmlns') {
+      prefix = ''
+    } else if (attribute.namespacePrefix === 'xmlns') {
+      prefix = attribute.localName
+    } else {
+      continue
+    }
+
+    namespaces ??= new Map(inherited)
+    namespaces.set(prefix, attribute.value)
+  }
+
+  return namespaces ?? inherited
+}
+
+const readTtmlProfile = (root: XmlElement): TtmlProfile | null => {
+  let profile: TtmlProfile | null = null
+  const rootNamespaces = readNamespaces(root, new Map())
+  for (const namespace of rootNamespaces.values()) {
+    if (namespace === NAMESPACE_AMLL) {
+      return 'amll'
+    }
+    if (namespace === NAMESPACE_ITUNES || namespace === NAMESPACE_ITUNES_METADATA) {
+      profile = 'itunes'
+    }
+  }
+
+  const stack = getXmlChildElements(root, 'head').map((element) => {
+    return { element, namespaces: rootNamespaces, inMetadata: false }
+  })
+
+  while (stack.length) {
+    const entry = stack.pop()
+    if (!entry) {
+      continue
+    }
+
+    const { element } = entry
+    const namespaces = readNamespaces(element, entry.namespaces)
+    const inMetadata = entry.inMetadata || element.localName === 'metadata'
+    const namespace = namespaces.get(element.namespacePrefix) ?? null
+    if (inMetadata && element.localName === 'meta') {
+      if (namespace === NAMESPACE_AMLL) {
+        return 'amll'
+      }
+
+      // Older inputs omit the prefix declaration; an explicit binding must never use this fallback.
+      if (
+        namespace === null &&
+        element.qualifiedName === 'amll:meta' &&
+        getXmlQualifiedAttribute(element, 'key') !== undefined &&
+        getXmlQualifiedAttribute(element, 'value') !== undefined
+      ) {
+        return 'amll'
+      }
+    }
+    if (inMetadata && element.localName === 'iTunesMetadata' && namespace === NAMESPACE_ITUNES_METADATA) {
+      profile = 'itunes'
+    }
+
+    for (const child of element.children) {
+      if (child.nodeType === XmlNodeType.element) {
+        stack.push({ element: child, namespaces, inMetadata })
+      }
+    }
+  }
+
+  return profile
 }
 
 const readSpanTime = (element: XmlElement) => {
@@ -839,7 +909,7 @@ const attachHeadAnnotations = (metadata: Map<string, ElementContext[]>, lineMap:
 /**
  * Reads a TTML document into the model.
  *
- * The profile only changes where metadata comes from, so one reader serves both.
+ * Missing dialect signals leave the source profile unknown.
  * A document that parses but holds no timed paragraph is `INVALID` rather than an error.
  */
 export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {}): ParseResult => {
@@ -848,14 +918,13 @@ export const parseTtml = (input: TtmlParseInput, options: TtmlParseOptions = {})
     return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
   }
 
-  const profile = readTtmlProfile(content)
-
   const document = parseXml(content)
-  const root = document ? findXmlElement(document, 'tt') : undefined
+  const root = document ? (findXmlElement(document, 'tt') ?? null) : null
   if (!root) {
-    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, profile, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
+    return finalizeLyric(makeEnrichedLyric({ format: FORMAT, status: EnrichedLyricStatus.INVALID, meta: makeMeta() }))
   }
 
+  const profile = readTtmlProfile(root) ?? ''
   const language = readLanguage(root, lowerTag(options.language))
   const body = findElements(root, 'body', false, true, language)[0]
   const metadata = findElements(root, 'metadata', false, true, language)[0]
