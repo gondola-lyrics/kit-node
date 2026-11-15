@@ -28,7 +28,7 @@ import { insertSpaces, resolveRules } from './rules'
 
 export interface InsertSpacesOptions {
   /**
-   * Rules to apply; omitting the list applies all of them.
+   * Rules to apply; omitting the list applies all of them, while an empty list leaves the lyric unchanged.
    */
   rules?: InsertSpacesRule[]
   /**
@@ -281,12 +281,15 @@ const applyToAnnotation = (annotation: EnrichedLineAnnotation | undefined, rules
  * Other inserted spaces remain separate untimed tokens.
  * A track whose source data cannot survive the rewrite is kept unchanged.
  *
- * @returns The input when unchanged, or a new lyric sharing all unchanged nodes.
+ * @returns The input when no rules are selected or nothing changes, or a new lyric sharing all unchanged nodes.
  */
 export const insertSpacesInLines = (lyric: EnrichedLyric, options: InsertSpacesOptions = {}): EnrichedLyric => {
   const rules = resolveRules(options.rules)
-  const annotations = options.annotations ?? true
+  if (!rules.size) {
+    return lyric
+  }
 
+  const annotations = options.annotations ?? true
   const applyToBackground = (background: EnrichedLineBackground): EnrichedLineBackground => {
     const content = applyToContent(background.content, rules) ?? undefined
     const annotation = annotations ? (applyToAnnotation(background.annotation, rules) ?? undefined) : background.annotation

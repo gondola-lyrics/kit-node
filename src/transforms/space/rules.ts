@@ -169,12 +169,12 @@ export const resolveRules = (rules: InsertSpacesRule[] | undefined) => {
 }
 
 /**
- * Applies the selected rules to one text, returning it trimmed.
+ * Applies the selected rules to one text; an empty selection preserves the original text.
  *
  * Repeated marks are held aside first, so a rule that widens a single mark never splits a run that belongs together.
  */
 export const insertSpaces = (text: string, rules: Set<InsertSpacesRule>) => {
-  if (!text.trim()) {
+  if (!rules.size || !text.trim()) {
     return text
   }
 
