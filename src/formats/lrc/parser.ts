@@ -237,11 +237,12 @@ const readWords = (pieces: WordPiece[], lineStart: number) => {
  * Explicit word ranges can extend past the next line's start, so the inferred end covers both.
  * A trailing open segment uses that end when it is known.
  */
-const readLine = (text: string, start: number, nextStart: number | undefined) => {
+const readLine = (text: string, start: number, nextStart: number | null) => {
   const trimmed = text.trim()
   const pieces = splitWordTags(text)
+
+  let end = nextStart !== null && nextStart > start ? nextStart : undefined
   const hasText = pieces.some((piece) => piece.text.trim().length > 0)
-  let end = nextStart !== undefined && nextStart >= start ? nextStart : undefined
   if (!hasText) {
     return makeEnrichedLineInstrumental({ time: makeTimeRange({ start, end }) })
   }
@@ -282,16 +283,22 @@ const readLine = (text: string, start: number, nextStart: number | undefined) =>
 }
 
 /**
- * Builds one line per timed row, so an annotation track reuses the original text's reading unchanged.
- * Empty timed rows become instrumental lines bounded by the next timestamp when one is usable.
+ * Stacked tags need chronological bounds even though source rows and callbacks keep their input order.
  */
 const readLines = (timed: TimedLine[], options: LrcReadOptions): EnrichedLine[] => {
-  const lines: EnrichedLine[] = []
+  const nextStarts = new Map<number, number | null>()
+  for (const { start } of timed) {
+    nextStarts.set(start, null)
+  }
 
-  for (const [index, item] of timed.entries()) {
-    const next = timed[index + 1]?.start
-    // LRC has no line ends; only a nondecreasing next timestamp can supply one.
-    const line = readLine(item.text, item.start, next)
+  const starts = [...nextStarts.keys()].sort((first, second) => first - second)
+  for (const [index, start] of starts.entries()) {
+    nextStarts.set(start, starts[index + 1] ?? null)
+  }
+
+  const lines: EnrichedLine[] = []
+  for (const item of timed) {
+    const line = readLine(item.text, item.start, nextStarts.get(item.start) ?? null)
     lines.push(line)
     options.onLine?.(line, readLineTiming(item.tag), item.row)
   }
@@ -300,7 +307,8 @@ const readLines = (timed: TimedLine[], options: LrcReadOptions): EnrichedLine[] 
 }
 
 /**
- * Reads one LRC track in source order and performs no other operation: no metadata mapping, annotation attachment, sorting, or normalization.
+ * Reads one LRC track in source order, inferring ends from the next strictly later line start.
+ * Metadata mapping, annotation attachment and normalization are left to the caller.
  *
  * @param text Original lyrics or one auxiliary track in LRC syntax.
  * @param options Optional observer for source timestamp information.
