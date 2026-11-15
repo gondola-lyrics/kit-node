@@ -1,30 +1,42 @@
 <template>
-  <div :class="$style.field">
-    <label :for="id">{{ label }}</label>
-    <span :class="$style.control">
-      <input
-        :id="id"
-        :value="draft"
-        type="number"
-        :min="min"
-        :max="max"
-        :step="integer ? 1 : 'any'"
-        :inputmode="integer ? 'numeric' : 'decimal'"
-        :placeholder="placeholder ?? (defaultValue === undefined ? '' : String(defaultValue))"
-        :aria-invalid="invalid || undefined"
-        :aria-describedby="invalid ? id + '-error' : hint ? id + '-hint' : undefined"
-        @focus="focused = true"
-        @input="updateDraft"
-        @blur="finishEditing"
-      />
-      <span :class="$style.unit">ms</span>
-    </span>
-    <small v-if="invalid" :id="id + '-error'" :class="$style.error" role="status">{{ t('settings.invalidNumber') }}</small>
-    <small v-else-if="hint" :id="id + '-hint'">{{ hint }}</small>
-  </div>
+  <NFormItem
+    :class="$style.field"
+    :label="label"
+    :label-props="{ for: id }"
+    :validation-status="invalid ? 'error' : undefined"
+    :show-feedback="invalid || !!hint"
+  >
+    <NInputNumber
+      :class="$style.control"
+      :value="modelValue ?? null"
+      :min="min"
+      :max="max"
+      :validator="validateValue"
+      clearable
+      :placeholder="placeholder ?? (defaultValue === undefined ? '' : String(defaultValue))"
+      :input-props="{
+        id,
+        inputmode: integer ? 'numeric' : 'decimal',
+        'aria-invalid': invalid || undefined,
+        'aria-describedby': invalid ? id + '-error' : hint ? id + '-hint' : undefined,
+        onInput: updateDraft,
+      }"
+      @focus="focused = true"
+      @update:value="updateValue"
+      @clear="invalid = false"
+      @blur="finishEditing"
+    >
+      <template #suffix><NText depth="3" :class="$style.unit">ms</NText></template>
+    </NInputNumber>
+    <template #feedback>
+      <span v-if="invalid" :id="id + '-error'" role="status">{{ t('settings.invalidNumber') }}</span>
+      <span v-else-if="hint" :id="id + '-hint'">{{ hint }}</span>
+    </template>
+  </NFormItem>
 </template>
 
 <script setup lang="ts">
+import { NFormItem, NInputNumber, NText } from 'naive-ui'
 import { ref, watch } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -48,22 +60,27 @@ const emit = defineEmits<{
   clear: []
 }>()
 const { t } = useI18n()
-const draft = ref(props.modelValue === undefined ? '' : String(props.modelValue))
 const focused = ref(false)
 const invalid = ref(false)
 
 // Keep invalid drafts local so the displayed value cannot silently apply a different setting.
 const updateDraft = (event: Event) => {
   const input = event.target as HTMLInputElement
-  draft.value = input.value
   const value = Number(input.value)
   invalid.value =
     input.validity.badInput ||
     (input.value !== '' && (!Number.isFinite(value) || value < props.min || value > props.max || (props.integer && !Number.isSafeInteger(value))))
-  if (invalid.value) {
+}
+
+const validateValue = (value: number): boolean => {
+  return !invalid.value && Number.isFinite(value) && value >= props.min && value <= props.max && (!props.integer || Number.isSafeInteger(value))
+}
+
+const updateValue = (value: number | null) => {
+  if (value !== null && !validateValue(value)) {
     return
   }
-  if (input.value === '') {
+  if (value === null) {
     if (props.defaultValue === undefined) {
       emit('clear')
     } else {
@@ -77,15 +94,13 @@ const updateDraft = (event: Event) => {
 const finishEditing = () => {
   focused.value = false
   invalid.value = false
-  draft.value = props.modelValue === undefined ? '' : String(props.modelValue)
 }
 
 watch(
   () => props.modelValue,
-  (value) => {
+  () => {
     if (!focused.value) {
       invalid.value = false
-      draft.value = value === undefined ? '' : String(value)
     }
   },
 )
@@ -93,73 +108,25 @@ watch(
 
 <style module lang="scss">
 .field {
-  display: flex;
   min-width: 0;
-  flex-direction: column;
   align-self: start;
-  gap: 7px;
-  color: var(--text);
-  font-size: 12px;
-
-  > label {
-    line-height: 1.5;
-  }
-
-  :global(input) {
-    width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    padding: 7px 10px;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: #fff;
-    color: var(--text);
-    font-size: 12px;
-  }
 
   :global(input) {
     font-family: var(--mono);
-  }
-
-  :global(input[aria-invalid='true']) {
-    border-color: #bd6675;
-  }
-
-  small {
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-  }
-
-  .error {
-    color: #963e50;
   }
 }
 
 @media (max-width: 820px) {
   .field :global(input) {
-    min-height: 44px;
     font-size: 16px;
   }
 }
 
-.control {
-  position: relative;
-  display: block;
-
-  input {
-    padding-right: 48px;
-  }
+.unit {
+  font: 10px var(--mono);
 }
 
-.unit {
-  position: absolute;
-  top: 50%;
-  right: 27px;
-  color: var(--muted);
-  font: 10px var(--mono);
-  transform: translateY(-50%);
-  pointer-events: none;
+.control {
+  width: 100%;
 }
 </style>

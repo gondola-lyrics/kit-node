@@ -1,29 +1,39 @@
 <template>
-  <div :class="$style.page">
+  <NConfigProvider
+    :class="$style.page"
+    :theme-overrides="themeOverrides"
+    :hljs="hljs"
+    :locale="locale === 'zh-CN' ? zhCN : enUS"
+    :date-locale="locale === 'zh-CN' ? dateZhCN : dateEnUS"
+  >
+    <NGlobalStyle />
     <div :class="$style.frame">
       <header :class="$style.topbar">
-        <span :class="$style.wordmark">Gondola Lyrics</span>
-        <button :class="$style.locale" type="button" :aria-label="t('app.language')" @click="toggleLocale">
+        <NText strong :class="$style.wordmark">Gondola Lyrics</NText>
+        <NButton quaternary size="small" :class="$style.locale" :aria-label="t('app.language')" @click="toggleLocale">
           <span :class="{ [$style.localeActive]: locale === 'zh-CN' }">CN</span>
           <span :class="$style.localeSlash" aria-hidden="true">/</span>
           <span :class="{ [$style.localeActive]: locale === 'en' }">EN</span>
-        </button>
+        </NButton>
       </header>
       <main :class="$style.workspace">
         <SourceEditor :form="form" :storage-available="storageAvailable" />
         <ResultPanel v-model="form.options" :result="result" :parsing="parsing" :error="error" :error-detail="errorDetail" />
       </main>
     </div>
-  </div>
+  </NConfigProvider>
 </template>
 
 <script setup lang="ts">
+import { NButton, NConfigProvider, NGlobalStyle, NText, dateEnUS, dateZhCN, enUS, zhCN } from 'naive-ui'
 import { onMounted } from 'vue'
 
 import SourceEditor from './components/source-editor.vue'
 import ResultPanel from './components/result-panel.vue'
 import { useI18n } from './composables/useI18n'
 import { useParser } from './composables/useParser'
+import { hljs } from './lib/highlight'
+import { themeOverrides } from './lib/theme'
 
 const { locale, t, setLocale } = useI18n()
 const { form, result, parsing, error, errorDetail, storageAvailable } = useParser()
@@ -76,16 +86,14 @@ onMounted(() => {
 }
 
 .locale {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   min-height: 44px;
-  padding: 4px 0;
-  border: 0;
-  background: none;
   color: var(--muted);
   font: 11px var(--mono);
   letter-spacing: 0.08em;
+
+  :global(.n-button__content) {
+    gap: 8px;
+  }
 }
 
 .localeActive {

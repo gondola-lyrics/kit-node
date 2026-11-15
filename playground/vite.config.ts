@@ -19,4 +19,18 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@gondola-lyrics/kit'],
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        strictExecutionOrder: true,
+        codeSplitting: {
+          groups: [
+            { name: 'vue', test: /node_modules[\\/](?:@vue|vue)[\\/]/, priority: 20 },
+            { name: 'naive-ui', test: /node_modules[\\/]naive-ui[\\/]/, priority: 10, maxSize: 500000 },
+            { name: 'dependencies', test: /node_modules[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
 })

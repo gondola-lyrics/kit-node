@@ -1,33 +1,29 @@
 <template>
   <div :class="[$style.root, { [$style.source]: scope === 'parse' }]">
     <div :class="$style.toolbar">
-      <div :class="$style.tabs">
-        <slot />
-      </div>
-      <button
+      <div :class="$style.tabs"><slot /></div>
+      <NButton
         v-if="available"
-        type="button"
-        :class="[$style.toggle, { [$style.active]: opened }]"
+        quaternary
+        size="small"
+        :class="$style.toggle"
+        :type="opened ? 'primary' : 'default'"
         :aria-expanded="opened"
         :aria-controls="id + '-panel'"
         @click="opened = !opened"
       >
-        <span>{{ t('settings.title') }}</span>
-        <span v-if="changed" :class="$style.badge" :aria-label="t('settings.modified') + ': ' + changed">{{ changed }}</span>
-        <svg :class="{ [$style.open]: opened }" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+        {{ t('settings.title') }}
+        <NTag v-if="changed" size="small" type="primary" :bordered="false" :aria-label="t('settings.modified') + ': ' + changed">{{ changed }}</NTag>
+        <NText aria-hidden="true">{{ opened ? '−' : '+' }}</NText>
+      </NButton>
     </div>
-    <section v-if="available && opened" :id="id + '-panel'" :class="$style.panel" :aria-label="t('settings.title')">
-      <div v-if="scope === 'parse'" :class="$style.parseHeader">
-        <button type="button" :class="$style.reset" :disabled="changed === 0" @click="resetParse">
-          {{ t('settings.reset') }}
-        </button>
-      </div>
-      <div :class="$style.content">
-        <template v-if="scope === 'parse'">
-          <div :class="$style.parse">
+    <NCollapseTransition v-if="available" :show="opened">
+      <section :id="id + '-panel'" :class="$style.panel" :aria-label="t('settings.title')">
+        <div v-if="scope === 'parse'" :class="$style.parseHeader">
+          <NButton quaternary size="small" :disabled="changed === 0" @click="resetParse">{{ t('settings.reset') }}</NButton>
+        </div>
+        <NForm size="small" label-placement="top" :show-feedback="false" :class="$style.content">
+          <div v-if="scope === 'parse'" :class="$style.parse">
             <NumberField
               v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'"
               :id="id + '-tolerance'"
@@ -37,19 +33,14 @@
               :integer="false"
               :default-value="annotationDefaults.annotationTolerance"
             />
-            <div v-else-if="format === 'ttml'" :class="$style.field">
-              <label :for="id + '-language'">{{ t('settings.language') }}</label>
-              <input
-                :id="id + '-language'"
-                v-model="options.parse.ttml.language"
-                type="text"
+            <NFormItem v-else-if="format === 'ttml'" :label="t('settings.language')" :label-props="{ for: id + '-language' }" :class="$style.field">
+              <NInput
+                v-model:value="options.parse.ttml.language"
                 placeholder="zh-CN, en…"
-                spellcheck="false"
-                autocapitalize="off"
-                :aria-describedby="id + '-language-hint'"
+                :input-props="{ ...textInputProps, id: id + '-language', 'aria-describedby': id + '-language-hint' }"
               />
-              <small :id="id + '-language-hint'">{{ t('settings.languageHint') }}</small>
-            </div>
+              <NText :id="id + '-language-hint'" depth="3" :class="$style.hint">{{ t('settings.languageHint') }}</NText>
+            </NFormItem>
             <NumberField
               v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'"
               :id="id + '-word-tolerance'"
@@ -59,337 +50,300 @@
               :integer="false"
               :default-value="annotationDefaults.wordAnnotationTolerance"
             />
-            <div v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'" :class="[$style.field, $style.fullWidth]">
-              <label :class="$style.check">
-                <input
-                  :id="id + '-word-fallback'"
-                  v-model="annotationOptions.wordAnnotationFallback"
-                  type="checkbox"
-                  :aria-describedby="id + '-word-fallback-hint'"
-                />
-                <span>{{ t('settings.wordAnnotationFallback') }}</span>
-              </label>
-              <small :id="id + '-word-fallback-hint'">{{ t('settings.wordAnnotationFallbackHint') }}</small>
+            <div v-if="format === 'lrc' || format === 'qrc' || format === 'yrc'" :class="$style.fullWidth">
+              <NCheckbox
+                :id="id + '-word-fallback'"
+                v-model:checked="annotationOptions.wordAnnotationFallback"
+                :aria-describedby="id + '-word-fallback-hint'"
+              >
+                {{ t('settings.wordAnnotationFallback') }}
+              </NCheckbox>
+              <NText :id="id + '-word-fallback-hint'" depth="3" :class="$style.hint">{{ t('settings.wordAnnotationFallbackHint') }}</NText>
             </div>
           </div>
-        </template>
-        <template v-else>
-          <section :class="$style.section" :aria-labelledby="id + '-transforms-title'">
-            <div :class="$style.header">
-              <h3 :id="id + '-transforms-title'" :class="$style.heading">{{ t('settings.transforms') }}</h3>
-              <button
-                :id="id + '-transforms-reset'"
-                type="button"
-                :class="$style.reset"
-                :disabled="transformChanges === 0"
-                :aria-label="t('settings.transforms') + ' · ' + t('settings.reset')"
-                @click="resetTransforms"
-              >
-                {{ t('settings.reset') }}
-              </button>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-credits'" v-model="options.transforms.credits.enabled" type="checkbox" />
-                <span>{{ t('settings.extractCredits') }}</span>
-              </label>
-              <div v-if="options.transforms.credits.enabled" :class="[$style.fields, $style.credits]">
-                <div :class="$style.field">
-                  <label :class="$style.check">
-                    <input :id="id + '-credit-source-lines'" v-model="options.transforms.credits.removeSourceLines" type="checkbox" />
-                    <span>{{ t('settings.removeCreditLines') }}</span>
-                  </label>
-                </div>
-                <div :class="$style.field">
-                  <label :class="$style.check">
-                    <input
+          <template v-else>
+            <section :class="$style.section" :aria-labelledby="id + '-transforms-title'">
+              <div :class="$style.header">
+                <NH3 :id="id + '-transforms-title'" :class="$style.heading">{{ t('settings.transforms') }}</NH3>
+                <NButton
+                  :id="id + '-transforms-reset'"
+                  quaternary
+                  size="small"
+                  :disabled="transformChanges === 0"
+                  :aria-label="t('settings.transforms') + ' · ' + t('settings.reset')"
+                  @click="resetTransforms"
+                  >{{ t('settings.reset') }}</NButton
+                >
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-credits'" v-model:checked="options.transforms.credits.enabled" :class="$style.check">{{
+                  t('settings.extractCredits')
+                }}</NCheckbox>
+                <div v-if="options.transforms.credits.enabled" :class="[$style.fields, $style.credits]">
+                  <NCheckbox :id="id + '-credit-source-lines'" v-model:checked="options.transforms.credits.removeSourceLines">{{
+                    t('settings.removeCreditLines')
+                  }}</NCheckbox>
+                  <div>
+                    <NCheckbox
                       :id="id + '-credit-match-unknowns'"
-                      v-model="options.transforms.credits.matchUnknowns"
-                      type="checkbox"
+                      v-model:checked="options.transforms.credits.matchUnknowns"
                       :aria-describedby="id + '-credit-unknowns-hint'"
+                      >{{ t('settings.matchCreditUnknowns') }}</NCheckbox
+                    >
+                    <NText :id="id + '-credit-unknowns-hint'" depth="3" :class="$style.hint">{{ t('settings.matchCreditUnknownsHint') }}</NText>
+                  </div>
+                  <NFormItem :label="t('settings.creditNameSeparators')" :label-props="{ for: id + '-credit-name-separators' }" :class="$style.field">
+                    <NInput
+                      :value="creditNameSeparators"
+                      type="textarea"
+                      :rows="3"
+                      :input-props="{ ...textInputProps, id: id + '-credit-name-separators', 'aria-describedby': id + '-credit-separators-hint' }"
+                      @update:value="updateCreditSeparators"
+                      @blur="creditNameSeparators = options.transforms.credits.nameSeparators.join('\n')"
                     />
-                    <span>{{ t('settings.matchCreditUnknowns') }}</span>
-                  </label>
-                  <small :id="id + '-credit-unknowns-hint'">{{ t('settings.matchCreditUnknownsHint') }}</small>
-                </div>
-                <div :class="$style.field">
-                  <label :for="id + '-credit-name-separators'">{{ t('settings.creditNameSeparators') }}</label>
-                  <textarea
-                    :id="id + '-credit-name-separators'"
-                    v-model="creditNameSeparators"
-                    rows="3"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocapitalize="off"
-                    :aria-describedby="id + '-credit-separators-hint'"
-                    @input="updateCreditSeparators"
-                    @blur="creditNameSeparators = options.transforms.credits.nameSeparators.join('\n')"
-                  ></textarea>
-                  <small :id="id + '-credit-separators-hint'">{{ t('settings.creditNameSeparatorsHint') }}</small>
+                    <NText :id="id + '-credit-separators-hint'" depth="3" :class="$style.hint">{{ t('settings.creditNameSeparatorsHint') }}</NText>
+                  </NFormItem>
                 </div>
               </div>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-filters'" v-model="options.transforms.filters.enabled" type="checkbox" />
-                <span>{{ t('settings.removeNonLyric') }}</span>
-              </label>
-              <div v-if="options.transforms.filters.enabled" :class="[$style.fields, $style.twoColumns]">
-                <small :class="$style.hint">{{ t('settings.musicInfoFormatHint') }}</small>
-                <div :class="$style.field">
-                  <label :for="id + '-music-titles'">{{ t('settings.musicTitles') }}</label>
-                  <textarea
-                    :id="id + '-music-titles'"
-                    :value="musicTitlesText"
-                    :aria-describedby="id + '-music-info-hint'"
-                    spellcheck="false"
-                    @input="updateMusicInfo('titles', $event)"
-                  />
-                </div>
-                <div :class="$style.field">
-                  <label :for="id + '-music-artists'">{{ t('settings.musicArtists') }}</label>
-                  <textarea
-                    :id="id + '-music-artists'"
-                    :value="musicArtistsText"
-                    :aria-describedby="id + '-music-info-hint'"
-                    spellcheck="false"
-                    @input="updateMusicInfo('artists', $event)"
-                  />
-                </div>
-                <small :id="id + '-music-info-hint'" :class="$style.hint">{{ t('settings.musicInfoHint') }}</small>
-                <fieldset :class="$style.ruleSet">
-                  <legend>{{ t('settings.nonLyricCategories') }}</legend>
-                  <label v-for="category in nonLyricCategoryOptions" :key="category.value" :class="$style.check">
-                    <input v-model="options.transforms.filters.categories" type="checkbox" :value="category.value" />
-                    <span>{{ category.label }}</span>
-                  </label>
-                </fieldset>
-                <small :class="$style.hint">{{ t('settings.removeNonLyricHint') }}</small>
-              </div>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-agents'" v-model="options.transforms.agents.enabled" type="checkbox" />
-                <span>{{ t('settings.extractAgents') }}</span>
-              </label>
-              <div v-if="options.transforms.agents.enabled" :class="[$style.fields, $style.twoColumns]">
-                <div :class="$style.field">
-                  <label :for="id + '-agent-mode'">{{ t('settings.agentMatchMode') }}</label>
-                  <select :id="id + '-agent-mode'" v-model="agentMatchMode" :aria-describedby="id + '-agent-mode-hint'">
-                    <option value="legacy">{{ t('settings.agentLegacyMode') }}</option>
-                    <option value="bindings">{{ t('settings.agentBindingsMode') }}</option>
-                  </select>
-                  <small :id="id + '-agent-mode-hint'">{{
-                    t(agentMatchMode === 'legacy' ? 'settings.agentLegacyHint' : 'settings.agentBindingsModeHint')
-                  }}</small>
-                </div>
-                <label :class="[$style.check, $style.alignedCheck]">
-                  <input :id="id + '-agent-prefixes'" v-model="options.transforms.agents.removePrefixes" type="checkbox" />
-                  <span>{{ t('settings.removeAgentPrefixes') }}</span>
-                </label>
-                <div v-if="agentMatchMode === 'bindings'" :class="[$style.field, $style.fullWidth]">
-                  <label :for="id + '-agent-bindings'">{{ t('settings.agentBindings') }}</label>
-                  <textarea
-                    :id="id + '-agent-bindings'"
-                    v-model="agentBindingsText"
-                    rows="5"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocapitalize="off"
-                    :aria-invalid="agentBindingsError ? true : undefined"
-                    :aria-describedby="id + '-agent-bindings-hint' + (agentBindingsError ? ' ' + id + '-agent-bindings-error' : '')"
-                    @input="updateAgentBindings"
-                  ></textarea>
-                  <small :id="id + '-agent-bindings-hint'">{{ t('settings.agentBindingsHint') }}</small>
-                  <small v-if="agentBindingsError" :id="id + '-agent-bindings-error'" :class="$style.bindingError" role="alert">{{
-                    t(agentBindingsError)
-                  }}</small>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-filters'" v-model:checked="options.transforms.filters.enabled" :class="$style.check">{{
+                  t('settings.removeNonLyric')
+                }}</NCheckbox>
+                <div v-if="options.transforms.filters.enabled" :class="[$style.fields, $style.twoColumns]">
+                  <NText depth="3" :class="[$style.hint, $style.fullWidth]">{{ t('settings.musicInfoFormatHint') }}</NText>
+                  <NFormItem :label="t('settings.musicTitles')" :label-props="{ for: id + '-music-titles' }" :class="$style.field">
+                    <NInput
+                      :value="musicTitlesText"
+                      type="textarea"
+                      :rows="3"
+                      :input-props="{ ...textInputProps, id: id + '-music-titles', 'aria-describedby': id + '-music-info-hint' }"
+                      @update:value="updateMusicInfo('titles', $event)"
+                    />
+                  </NFormItem>
+                  <NFormItem :label="t('settings.musicArtists')" :label-props="{ for: id + '-music-artists' }" :class="$style.field">
+                    <NInput
+                      :value="musicArtistsText"
+                      type="textarea"
+                      :rows="3"
+                      :input-props="{ ...textInputProps, id: id + '-music-artists', 'aria-describedby': id + '-music-info-hint' }"
+                      @update:value="updateMusicInfo('artists', $event)"
+                    />
+                  </NFormItem>
+                  <NText :id="id + '-music-info-hint'" depth="3" :class="[$style.hint, $style.fullWidth]">{{ t('settings.musicInfoHint') }}</NText>
+                  <NFormItem :label="t('settings.nonLyricCategories')" :class="[$style.field, $style.fullWidth]">
+                    <NCheckboxGroup v-model:value="options.transforms.filters.categories" :class="$style.ruleGrid">
+                      <NCheckbox v-for="category in nonLyricCategoryOptions" :key="category.value" :value="category.value">{{
+                        category.label
+                      }}</NCheckbox>
+                    </NCheckboxGroup>
+                    <NText depth="3" :class="$style.hint">{{ t('settings.removeNonLyricHint') }}</NText>
+                  </NFormItem>
                 </div>
               </div>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-instrumental'" v-model="options.transforms.instrumental.enabled" type="checkbox" />
-                <span>{{ t('settings.insertInstrumental') }}</span>
-              </label>
-              <div v-if="options.transforms.instrumental.enabled" :class="$style.fields">
-                <NumberField
-                  :id="id + '-min-intro-duration'"
-                  v-model="options.transforms.instrumental.minIntroDuration"
-                  :label="t('settings.minIntroDuration')"
-                  :default-value="defaults.transforms.instrumental.minIntroDuration"
-                />
-                <NumberField
-                  :id="id + '-min-duration'"
-                  v-model="options.transforms.instrumental.minDuration"
-                  :label="t('settings.minDuration')"
-                  :default-value="defaults.transforms.instrumental.minDuration"
-                />
-                <NumberField
-                  :id="id + '-end-time'"
-                  v-model="options.transforms.instrumental.endTime"
-                  :label="t('settings.endTime')"
-                  :hint="t('settings.endTimeHint')"
-                  :placeholder="t('settings.endTimePlaceholder')"
-                  :max="2147483647"
-                  @clear="options.transforms.instrumental.endTime = undefined"
-                />
-              </div>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-emphasis'" v-model="options.transforms.emphasis.enabled" type="checkbox" />
-                <span>{{ t('settings.emphasis') }}</span>
-              </label>
-              <NumberField
-                v-if="options.transforms.emphasis.enabled"
-                :id="id + '-duration-threshold'"
-                v-model="options.transforms.emphasis.durationThreshold"
-                :class="$style.emphasis"
-                :label="t('settings.durationThreshold')"
-                :default-value="defaults.transforms.emphasis.durationThreshold"
-              />
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-extract'" v-model="options.transforms.extract.enabled" type="checkbox" />
-                <span>{{ t('settings.extractBackground') }}</span>
-              </label>
-              <div v-if="options.transforms.extract.enabled" :class="$style.checks">
-                <label :class="$style.check">
-                  <input :id="id + '-extract-full-line'" v-model="options.transforms.extract.fullLine" type="checkbox" />
-                  <span>{{ t('settings.extractFullLine') }}</span>
-                </label>
-                <label :class="$style.check">
-                  <input :id="id + '-extract-in-line'" v-model="options.transforms.extract.inLine" type="checkbox" />
-                  <span>{{ t('settings.extractInLine') }}</span>
-                </label>
-                <label :class="$style.check">
-                  <input :id="id + '-extract-cross-line'" v-model="options.transforms.extract.crossLine" type="checkbox" />
-                  <span>{{ t('settings.extractCrossLine') }}</span>
-                </label>
-                <small :class="$style.hint">{{ t('settings.extractHint') }}</small>
-              </div>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-strip-brackets'" v-model="options.transforms.brackets.enabled" type="checkbox" />
-                <span>{{ t('settings.stripBrackets') }}</span>
-              </label>
-            </div>
-            <div :class="$style.operation">
-              <label :class="$style.check">
-                <input :id="id + '-insert-spaces'" v-model="options.transforms.spaces.enabled" type="checkbox" />
-                <span>{{ t('settings.insertSpaces') }}</span>
-              </label>
-              <div v-if="options.transforms.spaces.enabled" :class="$style.fields">
-                <label :class="[$style.check, $style.fullWidth]">
-                  <input :id="id + '-space-annotations'" v-model="options.transforms.spaces.annotations" type="checkbox" />
-                  <span>{{ t('settings.spaceAnnotations') }}</span>
-                </label>
-                <fieldset :class="$style.ruleSet">
-                  <legend>{{ t('settings.spaceRules') }}</legend>
-                  <label v-for="rule in spaceRuleOptions" :key="rule.value" :class="$style.check">
-                    <input v-model="options.transforms.spaces.rules" type="checkbox" :value="rule.value" />
-                    <span>{{ rule.label }}</span>
-                  </label>
-                </fieldset>
-              </div>
-            </div>
-          </section>
-          <section v-if="format === 'lrc' || format === 'ttml'" :class="$style.section" :aria-labelledby="id + '-generate-title'">
-            <div :class="$style.header">
-              <h3 :id="id + '-generate-title'" :class="$style.heading">{{ t('settings.generateOptions') }}</h3>
-              <button
-                :id="id + '-generate-reset'"
-                type="button"
-                :class="$style.reset"
-                :disabled="generateChanges === 0"
-                :aria-label="t('settings.generateOptions') + ' · ' + t('settings.reset')"
-                @click="resetGeneration"
-              >
-                {{ t('settings.reset') }}
-              </button>
-            </div>
-            <div :class="$style.grid">
-              <template v-if="format === 'lrc'">
-                <div :class="$style.field">
-                  <label :for="id + '-word-timing'">{{ t('settings.wordTiming') }}</label>
-                  <select
-                    :id="id + '-word-timing'"
-                    v-model="options.generate.lrc.wordTiming"
-                    :aria-describedby="options.generate.lrc.wordTiming === 'bracket' ? id + '-word-timing-hint' : undefined"
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-agents'" v-model:checked="options.transforms.agents.enabled" :class="$style.check">{{
+                  t('settings.extractAgents')
+                }}</NCheckbox>
+                <div v-if="options.transforms.agents.enabled" :class="[$style.fields, $style.twoColumns]">
+                  <NFormItem :label="t('settings.agentMatchMode')" :label-props="{ for: id + '-agent-mode' }" :class="$style.field">
+                    <NSelect
+                      :id="id + '-agent-mode'"
+                      v-model:value="agentMatchMode"
+                      :options="agentMatchOptions"
+                      :aria-label="t('settings.agentMatchMode')"
+                      :aria-describedby="id + '-agent-mode-hint'"
+                    />
+                    <NText :id="id + '-agent-mode-hint'" depth="3" :class="$style.hint">{{
+                      t(agentMatchMode === 'legacy' ? 'settings.agentLegacyHint' : 'settings.agentBindingsModeHint')
+                    }}</NText>
+                  </NFormItem>
+                  <NCheckbox :id="id + '-agent-prefixes'" v-model:checked="options.transforms.agents.removePrefixes" :class="$style.alignedCheck">{{
+                    t('settings.removeAgentPrefixes')
+                  }}</NCheckbox>
+                  <NFormItem
+                    v-if="agentMatchMode === 'bindings'"
+                    :label="t('settings.agentBindings')"
+                    :label-props="{ for: id + '-agent-bindings' }"
+                    :class="[$style.field, $style.fullWidth]"
                   >
-                    <option value="angle">{{ t('settings.wordTimingAngle') }}</option>
-                    <option value="bracket">{{ t('settings.wordTimingBracket') }}</option>
-                    <option value="none">{{ t('settings.wordTimingNone') }}</option>
-                  </select>
-                  <small v-if="options.generate.lrc.wordTiming === 'bracket'" :id="id + '-word-timing-hint'">{{
-                    t('settings.wordTimingBracketHint')
-                  }}</small>
-                </div>
-                <div :class="$style.field">
-                  <label :for="id + '-time-format'">{{ t('settings.timeFormat') }}</label>
-                  <input
-                    :id="id + '-time-format'"
-                    v-model="options.generate.lrc.timeFormat"
-                    type="text"
-                    :list="id + '-time-formats'"
-                    placeholder="mm:ss.SSS"
-                    spellcheck="false"
-                    autocapitalize="off"
-                    :aria-describedby="id + '-time-format-hint'"
-                  />
-                  <datalist :id="id + '-time-formats'">
-                    <option v-for="pattern in timeFormats" :key="pattern" :value="pattern" />
-                  </datalist>
-                  <small :id="id + '-time-format-hint'">{{ t('settings.timeFormatHint') }}</small>
-                </div>
-                <div :class="$style.checks">
-                  <label :class="$style.check">
-                    <input :id="id + '-include-meta'" v-model="options.generate.lrc.includeMeta" type="checkbox" />
-                    <span>{{ t('settings.includeMeta') }}</span>
-                  </label>
-                  <label :class="$style.check">
-                    <input :id="id + '-include-instrumental'" v-model="options.generate.lrc.includeInstrumental" type="checkbox" />
-                    <span>{{ t('settings.includeInstrumental') }}</span>
-                  </label>
-                  <label :class="[$style.check, { [$style.disabled]: options.generate.lrc.wordTiming === 'none' }]">
-                    <input
-                      :id="id + '-include-word-end'"
-                      v-model="options.generate.lrc.includeWordEnd"
-                      type="checkbox"
-                      :disabled="options.generate.lrc.wordTiming === 'none'"
+                    <NInput
+                      :value="agentBindingsText"
+                      type="textarea"
+                      :rows="5"
+                      :status="agentBindingsError ? 'error' : undefined"
+                      :input-props="{
+                        ...textInputProps,
+                        id: id + '-agent-bindings',
+                        'aria-invalid': !!agentBindingsError,
+                        'aria-describedby': id + '-agent-bindings-hint' + (agentBindingsError ? ' ' + id + '-agent-bindings-error' : ''),
+                      }"
+                      @update:value="updateAgentBindings"
                     />
-                    <span>{{ t('settings.includeWordEnd') }}</span>
-                  </label>
+                    <NText :id="id + '-agent-bindings-hint'" depth="3" :class="$style.hint">{{ t('settings.agentBindingsHint') }}</NText>
+                    <NAlert
+                      v-if="agentBindingsError"
+                      :id="id + '-agent-bindings-error'"
+                      type="error"
+                      :show-icon="false"
+                      :class="$style.feedback"
+                      role="alert"
+                      >{{ t(agentBindingsError) }}</NAlert
+                    >
+                  </NFormItem>
                 </div>
-              </template>
-              <template v-else>
-                <div :class="$style.field">
-                  <label :for="id + '-profile'">{{ t('settings.profile') }}</label>
-                  <select :id="id + '-profile'" v-model="options.generate.ttml.profile">
-                    <option value="auto">{{ t('settings.profileAuto') }}</option>
-                    <option value="amll">AMLL</option>
-                    <option value="itunes">iTunes</option>
-                  </select>
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-instrumental'" v-model:checked="options.transforms.instrumental.enabled" :class="$style.check">{{
+                  t('settings.insertInstrumental')
+                }}</NCheckbox>
+                <div v-if="options.transforms.instrumental.enabled" :class="$style.fields">
+                  <NumberField
+                    :id="id + '-min-intro-duration'"
+                    v-model="options.transforms.instrumental.minIntroDuration"
+                    :label="t('settings.minIntroDuration')"
+                    :default-value="defaults.transforms.instrumental.minIntroDuration"
+                  />
+                  <NumberField
+                    :id="id + '-min-duration'"
+                    v-model="options.transforms.instrumental.minDuration"
+                    :label="t('settings.minDuration')"
+                    :default-value="defaults.transforms.instrumental.minDuration"
+                  />
+                  <NumberField
+                    :id="id + '-end-time'"
+                    v-model="options.transforms.instrumental.endTime"
+                    :label="t('settings.endTime')"
+                    :hint="t('settings.endTimeHint')"
+                    :placeholder="t('settings.endTimePlaceholder')"
+                    :max="2147483647"
+                    @clear="options.transforms.instrumental.endTime = undefined"
+                  />
                 </div>
-                <div :class="[$style.checks, $style.inlineChecks]">
-                  <label :class="$style.check">
-                    <input :id="id + '-include-meta'" v-model="options.generate.ttml.includeMeta" type="checkbox" />
-                    <span>{{ t('settings.includeMeta') }}</span>
-                  </label>
-                  <label :class="$style.check">
-                    <input :id="id + '-indent'" v-model="options.generate.ttml.indent" type="checkbox" />
-                    <span>{{ t('settings.indent') }}</span>
-                  </label>
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-emphasis'" v-model:checked="options.transforms.emphasis.enabled" :class="$style.check">{{
+                  t('settings.emphasis')
+                }}</NCheckbox>
+                <NumberField
+                  v-if="options.transforms.emphasis.enabled"
+                  :id="id + '-duration-threshold'"
+                  v-model="options.transforms.emphasis.durationThreshold"
+                  :class="$style.emphasis"
+                  :label="t('settings.durationThreshold')"
+                  :default-value="defaults.transforms.emphasis.durationThreshold"
+                />
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-extract'" v-model:checked="options.transforms.extract.enabled" :class="$style.check">{{
+                  t('settings.extractBackground')
+                }}</NCheckbox>
+                <div v-if="options.transforms.extract.enabled" :class="$style.checks">
+                  <NCheckbox :id="id + '-extract-full-line'" v-model:checked="options.transforms.extract.fullLine">{{
+                    t('settings.extractFullLine')
+                  }}</NCheckbox>
+                  <NCheckbox :id="id + '-extract-in-line'" v-model:checked="options.transforms.extract.inLine">{{
+                    t('settings.extractInLine')
+                  }}</NCheckbox>
+                  <NCheckbox :id="id + '-extract-cross-line'" v-model:checked="options.transforms.extract.crossLine">{{
+                    t('settings.extractCrossLine')
+                  }}</NCheckbox>
+                  <NText depth="3" :class="[$style.hint, $style.fullWidth]">{{ t('settings.extractHint') }}</NText>
                 </div>
-              </template>
-            </div>
-          </section>
-        </template>
-      </div>
-    </section>
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-strip-brackets'" v-model:checked="options.transforms.brackets.enabled" :class="$style.check">{{
+                  t('settings.stripBrackets')
+                }}</NCheckbox>
+              </div>
+              <div :class="$style.operation">
+                <NCheckbox :id="id + '-insert-spaces'" v-model:checked="options.transforms.spaces.enabled" :class="$style.check">{{
+                  t('settings.insertSpaces')
+                }}</NCheckbox>
+                <div v-if="options.transforms.spaces.enabled" :class="$style.fields">
+                  <NCheckbox :id="id + '-space-annotations'" v-model:checked="options.transforms.spaces.annotations" :class="$style.fullWidth">{{
+                    t('settings.spaceAnnotations')
+                  }}</NCheckbox>
+                  <NFormItem :label="t('settings.spaceRules')" :class="[$style.field, $style.fullWidth]">
+                    <NCheckboxGroup v-model:value="options.transforms.spaces.rules" :class="$style.ruleGrid">
+                      <NCheckbox v-for="rule in spaceRuleOptions" :key="rule.value" :value="rule.value">{{ rule.label }}</NCheckbox>
+                    </NCheckboxGroup>
+                  </NFormItem>
+                </div>
+              </div>
+            </section>
+            <section v-if="format === 'lrc' || format === 'ttml'" :class="$style.section" :aria-labelledby="id + '-generate-title'">
+              <div :class="$style.header">
+                <NH3 :id="id + '-generate-title'" :class="$style.heading">{{ t('settings.generateOptions') }}</NH3>
+                <NButton
+                  :id="id + '-generate-reset'"
+                  quaternary
+                  size="small"
+                  :disabled="generateChanges === 0"
+                  :aria-label="t('settings.generateOptions') + ' · ' + t('settings.reset')"
+                  @click="resetGeneration"
+                  >{{ t('settings.reset') }}</NButton
+                >
+              </div>
+              <div :class="$style.grid">
+                <template v-if="format === 'lrc'">
+                  <NFormItem :label="t('settings.wordTiming')" :label-props="{ for: id + '-word-timing' }" :class="$style.field">
+                    <NSelect
+                      :id="id + '-word-timing'"
+                      v-model:value="options.generate.lrc.wordTiming"
+                      :options="wordTimingOptions"
+                      :aria-label="t('settings.wordTiming')"
+                      :aria-describedby="options.generate.lrc.wordTiming === 'bracket' ? id + '-word-timing-hint' : undefined"
+                    />
+                    <NText v-if="options.generate.lrc.wordTiming === 'bracket'" :id="id + '-word-timing-hint'" depth="3" :class="$style.hint">{{
+                      t('settings.wordTimingBracketHint')
+                    }}</NText>
+                  </NFormItem>
+                  <NFormItem :label="t('settings.timeFormat')" :label-props="{ for: id + '-time-format' }" :class="$style.field">
+                    <NAutoComplete
+                      v-model:value="options.generate.lrc.timeFormat"
+                      :options="timeFormats"
+                      placeholder="mm:ss.SSS"
+                      :input-props="{ ...textInputProps, id: id + '-time-format', 'aria-describedby': id + '-time-format-hint' }"
+                    />
+                    <NText :id="id + '-time-format-hint'" depth="3" :class="$style.hint">{{ t('settings.timeFormatHint') }}</NText>
+                  </NFormItem>
+                  <div :class="[$style.checks, $style.fullWidth]">
+                    <NCheckbox :id="id + '-include-meta'" v-model:checked="options.generate.lrc.includeMeta">{{
+                      t('settings.includeMeta')
+                    }}</NCheckbox>
+                    <NCheckbox :id="id + '-include-instrumental'" v-model:checked="options.generate.lrc.includeInstrumental">{{
+                      t('settings.includeInstrumental')
+                    }}</NCheckbox>
+                    <NCheckbox
+                      :id="id + '-include-word-end'"
+                      v-model:checked="options.generate.lrc.includeWordEnd"
+                      :disabled="options.generate.lrc.wordTiming === 'none'"
+                      >{{ t('settings.includeWordEnd') }}</NCheckbox
+                    >
+                  </div>
+                </template>
+                <template v-else>
+                  <NFormItem :label="t('settings.profile')" :label-props="{ for: id + '-profile' }" :class="$style.field">
+                    <NSelect
+                      :id="id + '-profile'"
+                      v-model:value="options.generate.ttml.profile"
+                      :options="profileOptions"
+                      :aria-label="t('settings.profile')"
+                    />
+                  </NFormItem>
+                  <div :class="[$style.checks, $style.inlineChecks]">
+                    <NCheckbox :id="id + '-include-meta'" v-model:checked="options.generate.ttml.includeMeta">{{
+                      t('settings.includeMeta')
+                    }}</NCheckbox>
+                    <NCheckbox :id="id + '-indent'" v-model:checked="options.generate.ttml.indent">{{ t('settings.indent') }}</NCheckbox>
+                  </div>
+                </template>
+              </div>
+            </section>
+          </template>
+        </NForm>
+      </section>
+    </NCollapseTransition>
   </div>
 </template>
 
@@ -398,6 +352,21 @@ import type { LyricFormat } from '@gondola-lyrics/kit'
 import type { MessageKey } from '../composables/useI18n'
 import type { PlaygroundOptions } from '../lib/options'
 
+import {
+  NAlert,
+  NAutoComplete,
+  NButton,
+  NCheckbox,
+  NCheckboxGroup,
+  NCollapseTransition,
+  NForm,
+  NFormItem,
+  NH3,
+  NInput,
+  NSelect,
+  NTag,
+  NText,
+} from 'naive-ui'
 import { computed, ref, watch } from 'vue'
 
 import { InsertSpacesRules, NON_LYRIC_CATEGORIES } from '@gondola-lyrics/kit'
@@ -422,6 +391,27 @@ const annotationDefaults = computed(() => {
   return defaults.parse[annotationFormat.value]
 })
 const timeFormats = ['mm:ss.SSS', 'mm:ss.SS', 'mm:ss', 'hh:mm:ss.SSS', 'ss.SSS']
+const textInputProps = { spellcheck: false, autocomplete: 'off', autocapitalize: 'off', style: { fontFamily: 'var(--mono)' } }
+const agentMatchOptions = computed(() => {
+  return [
+    { value: 'legacy', label: t('settings.agentLegacyMode') },
+    { value: 'bindings', label: t('settings.agentBindingsMode') },
+  ]
+})
+const wordTimingOptions = computed(() => {
+  return [
+    { value: 'angle', label: t('settings.wordTimingAngle') },
+    { value: 'bracket', label: t('settings.wordTimingBracket') },
+    { value: 'none', label: t('settings.wordTimingNone') },
+  ]
+})
+const profileOptions = computed(() => {
+  return [
+    { value: 'auto', label: t('settings.profileAuto') },
+    { value: 'amll', label: 'AMLL' },
+    { value: 'itunes', label: 'iTunes' },
+  ]
+})
 const creditNameSeparators = ref(options.value.transforms.credits.nameSeparators.join('\n'))
 const musicTitlesText = ref(options.value.transforms.filters.musicInfo?.titles?.join('\n') ?? '')
 const musicArtistsText = ref(options.value.transforms.filters.musicInfo?.artists?.join('\n') ?? '')
@@ -433,14 +423,10 @@ const readMusicNames = (value: string): string[] => {
     .filter(Boolean)
 }
 
-const updateMusicInfo = (key: 'titles' | 'artists', event: Event) => {
-  const target = event.target
-  if (!(target instanceof HTMLTextAreaElement)) {
-    return
-  }
+const updateMusicInfo = (key: 'titles' | 'artists', value: string) => {
   const draft = key === 'titles' ? musicTitlesText : musicArtistsText
-  draft.value = target.value
-  const names = readMusicNames(target.value)
+  draft.value = value
+  const names = readMusicNames(value)
   const musicInfo = { ...options.value.transforms.filters.musicInfo, [key]: names.length ? names : undefined }
   options.value.transforms.filters.musicInfo = !musicInfo.titles && !musicInfo.artists ? undefined : musicInfo
 }
@@ -485,15 +471,11 @@ const agentMatchMode = computed({
     agentBindingsError.value = ''
   },
 })
-const updateAgentBindings = (event: Event) => {
-  const target = event.target
-  if (!(target instanceof HTMLTextAreaElement)) {
-    return
-  }
-  agentBindingsText.value = target.value
+const updateAgentBindings = (value: string) => {
+  agentBindingsText.value = value
   let parsed: unknown
   try {
-    parsed = JSON.parse(target.value)
+    parsed = JSON.parse(value)
   } catch {
     agentBindingsError.value = 'settings.agentBindingsInvalidJson'
     return
@@ -527,13 +509,9 @@ const readCreditSeparators = (value: string): string[] => {
   return [...new Set(value.split(/\r\n?|\n/).filter(Boolean))]
 }
 
-const updateCreditSeparators = (event: Event) => {
-  const target = event.target
-  if (!(target instanceof HTMLTextAreaElement)) {
-    return
-  }
-  creditNameSeparators.value = target.value
-  options.value.transforms.credits.nameSeparators = readCreditSeparators(target.value)
+const updateCreditSeparators = (value: string) => {
+  creditNameSeparators.value = value
+  options.value.transforms.credits.nameSeparators = readCreditSeparators(value)
 }
 
 watch(
@@ -562,7 +540,9 @@ const spaceRuleOptions = computed(() => {
     [InsertSpacesRules.COMPRESS_SPACES]: 'settings.spaceRuleCompressSpaces',
     [InsertSpacesRules.TRIM_INSIDE_SYMBOLS]: 'settings.spaceRuleTrimInsideSymbols',
   }
-  return Object.entries(labels).map(([value, key]) => ({ value, label: t(key) }))
+  return Object.entries(labels).map(([value, key]) => {
+    return { value, label: t(key) }
+  })
 })
 
 const nonLyricCategoryOptions = computed(() => {
@@ -584,7 +564,9 @@ const nonLyricCategoryOptions = computed(() => {
 const available = computed(() => {
   return props.scope === 'result' || (!!props.format && props.format !== 'krc' && props.format !== 'kwrc')
 })
-const overrides = computed(() => getOptionOverrides(options.value))
+const overrides = computed(() => {
+  return getOptionOverrides(options.value)
+})
 const parseChanges = computed(() => {
   return props.format && props.format !== 'krc' && props.format !== 'kwrc' ? Object.keys(overrides.value?.parse?.[props.format] ?? {}).length : 0
 })
@@ -634,9 +616,8 @@ const resetGeneration = () => {
   align-items: center;
   justify-content: space-between;
   gap: 4px 12px;
-  padding: 7px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--line);
-  background: #fff;
 }
 
 .source .toolbar {
@@ -645,54 +626,15 @@ const resetGeneration = () => {
 
 .tabs {
   min-width: 0;
-}
-
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-
-  &:hover {
-    color: var(--primary-deep);
-  }
+  flex: 1 1 240px;
 }
 
 .toggle {
   margin-left: auto;
 
-  svg {
-    flex-shrink: 0;
-    transition: transform 120ms ease;
+  :global(.n-button__content) {
+    gap: 6px;
   }
-}
-
-.active {
-  color: var(--primary-deep);
-}
-
-.open {
-  transform: rotate(180deg);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--primary-soft);
-  color: var(--primary-deep);
-  font: 10px var(--mono);
 }
 
 .panel {
@@ -713,23 +655,8 @@ const resetGeneration = () => {
 
   > :global(section) + :global(section) {
     margin-top: 20px;
-    padding-top: 12px;
+    padding-top: 16px;
     border-top: 1px solid var(--line);
-  }
-}
-
-@media (max-width: 520px) {
-  .toolbar {
-    gap: 0 8px;
-    padding: 5px 8px;
-  }
-
-  .panel {
-    padding-inline: 12px;
-  }
-
-  .toggle {
-    min-height: 44px;
   }
 }
 
@@ -748,84 +675,51 @@ const resetGeneration = () => {
 .heading {
   min-width: 0;
   margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
   line-height: 1.6;
 }
 
-.reset {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  min-height: 36px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-
-  &:hover {
-    color: var(--primary-deep);
-  }
-}
-
-@media (max-width: 520px) {
-  .reset {
-    min-height: 44px;
-  }
-}
-
-.grid {
+.grid,
+.parse,
+.fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px 20px;
+  align-items: start;
+  gap: 16px 20px;
+  min-width: 0;
+}
+
+.grid,
+.parse {
   max-width: 960px;
 }
 
 .checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(185px, 100%), 1fr));
-  gap: 4px 20px;
+  gap: 10px 20px;
   align-items: start;
   min-width: 0;
 }
 
-.grid > .checks {
-  grid-column: 1 / -1;
-}
-
 .inlineChecks {
   grid-template-columns: minmax(0, 1fr);
-  align-self: end;
-}
-
-.grid > .inlineChecks {
-  grid-column: auto;
+  align-self: center;
 }
 
 .operation {
   display: grid;
   align-items: start;
-  gap: 8px 24px;
-  padding-block: 10px;
-
-  > .check {
-    font-weight: 550;
-  }
+  gap: 12px 24px;
+  padding-block: 16px;
 
   + .operation {
     border-top: 1px solid var(--line);
   }
 }
 
-.fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 12px 20px;
-  min-width: 0;
+.check {
+  font-weight: 550;
 }
 
 .fullWidth {
@@ -833,42 +727,34 @@ const resetGeneration = () => {
 }
 
 .emphasis {
-  width: 100%;
   max-width: 300px;
 }
 
 .hint {
-  grid-column: 1 / -1;
-  color: var(--muted);
+  display: block;
+  margin-top: 6px;
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
-.ruleSet {
+.ruleGrid {
   display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
-  gap: 0 20px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(175px, 100%), 1fr));
+  gap: 10px 20px;
+  width: 100%;
+}
 
-  legend {
-    margin-bottom: 6px;
-    padding: 0;
-    color: var(--muted);
-    font-size: 11px;
+.field {
+  min-width: 0;
+
+  :global(.n-form-item-blank) {
+    display: block;
   }
 }
 
-.parse {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 16px 24px;
-  max-width: 960px;
+.feedback {
+  margin-top: 8px;
 }
 
 @container options (min-width: 480px) {
@@ -880,18 +766,16 @@ const resetGeneration = () => {
 
   .credits > :last-child {
     grid-column: 1 / -1;
-    max-width: 300px;
   }
 
   .alignedCheck {
-    margin-top: 25px;
+    margin-top: 30px;
   }
 }
 
 @container options (min-width: 760px) {
   .operation {
     grid-template-columns: 164px minmax(0, 1fr);
-    padding-block: 14px;
   }
 
   .fields {
@@ -904,100 +788,23 @@ const resetGeneration = () => {
 
   .credits > :last-child {
     grid-column: auto;
-    max-width: none;
   }
 }
 
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-self: start;
-  gap: 7px;
-  color: var(--text);
-  font-size: 12px;
-
-  > label {
-    line-height: 1.5;
+@media (max-width: 520px) {
+  .toolbar {
+    padding-inline: 8px;
   }
 
-  :global(input:not([type='checkbox'])),
-  :global(select),
-  :global(textarea) {
-    width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    padding: 7px 10px;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: #fff;
-    color: var(--text);
-    font-size: 12px;
-  }
-
-  :global(input),
-  :global(textarea) {
-    font-family: var(--mono);
-  }
-
-  :global(textarea) {
-    resize: vertical;
-    line-height: 1.6;
-  }
-
-  :global(input[aria-invalid='true']),
-  :global(textarea[aria-invalid='true']) {
-    border-color: #bd6675;
-  }
-
-  small {
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-  }
-
-  .bindingError {
-    color: #a53b4d;
+  .panel {
+    padding-inline: 12px;
   }
 }
 
 @media (max-width: 820px) {
-  .field :global(input:not([type='checkbox'])),
-  .field :global(select),
+  .field :global(input),
   .field :global(textarea) {
-    min-height: 44px;
     font-size: 16px;
-  }
-}
-
-.check {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 40px;
-  min-width: 0;
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.6;
-  cursor: pointer;
-
-  input {
-    width: 15px;
-    height: 15px;
-    margin: 0;
-    flex-shrink: 0;
-  }
-}
-
-.disabled {
-  color: var(--muted);
-  cursor: default;
-}
-
-@media (max-width: 820px) {
-  .check {
-    min-height: 44px;
   }
 }
 </style>

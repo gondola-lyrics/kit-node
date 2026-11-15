@@ -1,48 +1,59 @@
 <template>
   <div :class="$style.preview">
     <section v-if="lyric.format || metadata.length || lyric.languageUsages.length || performers.length" :class="$style.header">
-      <dl :class="$style.rows">
-        <template v-if="lyric.format">
-          <dt>{{ t('result.format') }}</dt>
-          <dd>
-            <span :class="$style.value">{{ lyric.format }}</span>
-          </dd>
-        </template>
-        <template v-if="lyric.languageUsages.length">
-          <dt :class="{ [$style.sectionStart]: lyric.format }">{{ t('result.languages') }}</dt>
-          <dd :class="{ [$style.sectionStart]: lyric.format }">
-            <span v-for="(language, index) in lyric.languageUsages" :key="index" :class="$style.value">
-              <span :class="$style.tag">{{ language.tag }}</span>
-              <span :class="$style.coverage">{{ language.lineCount }} {{ t('result.lineUnit') }}</span>
-            </span>
-          </dd>
-        </template>
-        <template v-if="performers.length">
-          <dt :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languageUsages.length }]">{{ t('result.agents') }}</dt>
-          <dd :class="[$style.sectionStart, { [$style.aligned]: !lyric.format && !lyric.languageUsages.length }]">
-            <span v-for="(performer, index) in performers" :key="index" :class="[$style.value, { [$style.identifier]: performer.fallback }]">{{
-              performer.text
-            }}</span>
-          </dd>
-        </template>
-        <template v-for="(row, index) in metadata" :key="index">
-          <dt :class="[{ [$style.raw]: row.raw }, { [$style.sectionStart]: index === 0 && hasLeadingRows }]">
-            {{ row.label }}
-            <span v-if="row.detail" :class="$style.detail">{{ row.detail }}</span>
-          </dt>
-          <dd :class="{ [$style.sectionStart]: index === 0 && hasLeadingRows }">
-            <span v-for="(value, valueIndex) in row.values" :key="valueIndex" :class="$style.value" :title="value.language">{{ value.text }}</span>
-          </dd>
-        </template>
-      </dl>
+      <NDescriptions
+        :column="1"
+        label-placement="left"
+        size="small"
+        separator=""
+        :class="$style.rows"
+        :label-style="{ display: 'inline-block', width: 'var(--metadata-label-width)', marginRight: '14px', verticalAlign: 'top' }"
+        :content-style="{ display: 'inline-block', width: 'calc(100% - var(--metadata-label-width) - 14px)', verticalAlign: 'top' }"
+      >
+        <NDescriptionsItem v-if="lyric.format" :label="t('result.format') + ':'">
+          <NTag size="small" type="primary" :class="$style.value">{{ lyric.format }}</NTag>
+        </NDescriptionsItem>
+        <NDescriptionsItem v-if="lyric.languageUsages.length" :label="t('result.languages') + ':'">
+          <NSpace :size="[8, 6]">
+            <NTag v-for="(language, index) in lyric.languageUsages" :key="index" size="small" type="primary" :class="$style.value">
+              {{ language.tag }} · {{ language.lineCount }} {{ t('result.lineUnit') }}
+            </NTag>
+          </NSpace>
+        </NDescriptionsItem>
+        <NDescriptionsItem v-if="performers.length" :label="t('result.agents') + ':'">
+          <NSpace :size="[8, 6]">
+            <NTag
+              v-for="(performer, index) in performers"
+              :key="index"
+              size="small"
+              :class="[$style.value, { [$style.identifier]: performer.fallback }]"
+              >{{ performer.text }}</NTag
+            >
+          </NSpace>
+        </NDescriptionsItem>
+        <NDescriptionsItem v-for="(row, index) in metadata" :key="index">
+          <template #label>
+            <NText depth="3" :class="{ [$style.identifier]: row.raw }">{{ row.label }}:</NText>
+            <NText v-if="row.detail" depth="3" :class="$style.detail">({{ row.detail }})</NText>
+          </template>
+          <NSpace :size="[8, 6]">
+            <NTooltip v-for="(value, valueIndex) in row.values" :key="valueIndex" :disabled="!value.language">
+              <template #trigger
+                ><NTag size="small" :class="$style.value">{{ value.text }}</NTag></template
+              >
+              {{ value.language }}
+            </NTooltip>
+          </NSpace>
+        </NDescriptionsItem>
+      </NDescriptions>
     </section>
     <section :class="$style.linesSection">
-      <p v-if="!lyric.lines.length" :class="$style.noLines">{{ t('result.noLines') }}</p>
-      <ol v-else :class="$style.lines" :aria-label="t('result.lines')">
-        <li v-for="(line, index) in lyric.lines" :key="index">
+      <NEmpty v-if="!lyric.lines.length" :class="$style.noLines" :description="t('result.noLines')" />
+      <NList v-else :class="$style.lines" :aria-label="t('result.lines')" role="list">
+        <NListItem v-for="(line, index) in lyric.lines" :key="index" role="listitem">
           <LyricLine :line="line" :agents="lyric.agents" />
-        </li>
-      </ol>
+        </NListItem>
+      </NList>
     </section>
   </div>
 </template>
@@ -52,6 +63,7 @@ import type { EnrichedLyric, Text } from '@gondola-lyrics/model'
 import type { MessageKey } from '../composables/useI18n'
 
 import { CreditRole } from '@gondola-lyrics/model'
+import { NDescriptions, NDescriptionsItem, NEmpty, NList, NListItem, NSpace, NTag, NText, NTooltip } from 'naive-ui'
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -153,9 +165,6 @@ const performers = computed(() => {
     return { text: name || agent.id, fallback: name === '' }
   })
 })
-const hasLeadingRows = computed(() => {
-  return Boolean(props.lyric.format) || props.lyric.languageUsages.length > 0 || performers.value.length > 0
-})
 </script>
 
 <style module lang="scss">
@@ -173,16 +182,13 @@ const hasLeadingRows = computed(() => {
 }
 
 .lines {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-
-  > li {
+  :global(.n-list-item) {
     padding: 14px var(--result-pad, 16px);
+  }
 
-    + li {
-      border-top: 1px solid var(--line);
-    }
+  :global(.n-list-item__main) {
+    min-width: 0;
+    width: 100%;
   }
 }
 
@@ -193,7 +199,6 @@ const hasLeadingRows = computed(() => {
   font-size: 12px;
 }
 
-/* One key-value sheet: metadata first, then languages and performers as further sections. */
 .header {
   min-width: 0;
   padding: 16px var(--result-pad, 16px);
@@ -201,90 +206,49 @@ const hasLeadingRows = computed(() => {
 }
 
 .rows {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: 7px 20px;
+  --metadata-label-width: 120px;
+
   min-width: 0;
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
 
-  dt {
-    color: var(--muted);
-    white-space: nowrap;
-
-    &.raw {
-      font: 11px var(--mono);
-    }
+  :global(.n-descriptions-table) {
+    width: 100%;
+    table-layout: fixed;
   }
 
-  dd {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 12px;
+  :global(.n-descriptions-table-content__label) {
+    overflow-wrap: anywhere;
+  }
+
+  :global(.n-descriptions-table-content__content) {
     min-width: 0;
-    margin: 0;
-    color: var(--text);
   }
-}
-
-/* A later section keeps its label aligned but leaves more room before it. */
-.sectionStart {
-  padding-top: 14px;
-}
-
-/* The first row of the sheet needs no leading space. */
-.aligned {
-  padding-top: 0;
 }
 
 .detail {
-  display: block;
-  max-width: 160px;
-  margin-top: 2px;
+  margin-left: 5px;
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
 }
 
 .value {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
   max-width: 100%;
-  padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--wash);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  height: auto;
+  min-height: 24px;
+
+  :global(.n-tag__content) {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
 }
 
 .identifier {
   font: 11px var(--mono);
 }
 
-.tag {
-  color: var(--primary-deep);
-  font-family: var(--mono);
-}
-
-.coverage {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 @media (max-width: 480px) {
   .rows {
-    gap: 6px 12px;
+    --metadata-label-width: 90px;
   }
 }
 </style>

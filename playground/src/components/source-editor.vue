@@ -1,46 +1,51 @@
 <template>
   <section :class="$style.section" aria-labelledby="input-heading">
-    <h2 id="input-heading" :class="$style.heading">{{ t('input.title') }}</h2>
-    <div :class="$style.card">
+    <NH2 id="input-heading" :class="$style.heading">{{ t('input.title') }}</NH2>
+    <NCard :class="$style.card" :content-style="{ padding: 0 }">
       <OptionsPanel id="parse-options" v-model="form.options" scope="parse" :format="format">
         <ControlTabs v-model="form.mode" :items="modes" :label="t('settings.mode')" />
       </OptionsPanel>
 
       <div :id="'input-' + form.mode" role="tabpanel" :aria-labelledby="'mode-' + form.mode">
-        <label :class="$style.visuallyHidden" :for="'lyrics-input-' + form.mode">{{ t('input.label') }}</label>
-        <textarea
+        <NInput
           :key="form.mode"
-          :id="'lyrics-input-' + form.mode"
-          v-model="content"
+          v-model:value="content"
           :class="$style.editor"
           :placeholder="placeholder"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-        ></textarea>
+          type="textarea"
+          :rows="10"
+          :bordered="false"
+          :theme-overrides="{ borderRadius: '0' }"
+          :input-props="{ ...editorProps, id: 'lyrics-input-' + form.mode, 'aria-label': t('input.label') }"
+        />
         <div v-if="form.mode === 'lrc' || form.mode === 'qrc' || form.mode === 'yrc'" :class="$style.tracks">
-          <div v-for="track in tracks" :key="track.key" :class="$style.track">
-            <label :class="$style.trackLabel" :for="'lyrics-input-' + track.key">{{ track.label }}</label>
-            <textarea
-              :id="'lyrics-input-' + track.key"
-              v-model="form[track.key]"
-              :class="[$style.editor, $style.trackEditor]"
+          <NFormItem
+            v-for="track in tracks"
+            :key="track.key"
+            :class="$style.track"
+            :label="track.label"
+            :label-props="{ for: 'lyrics-input-' + track.key }"
+            :show-feedback="false"
+          >
+            <NInput
+              v-model:value="form[track.key]"
               :placeholder="track.placeholder"
-              spellcheck="false"
-              autocomplete="off"
-              autocapitalize="off"
-            ></textarea>
-          </div>
+              type="textarea"
+              :rows="5"
+              :input-props="{ ...editorProps, id: 'lyrics-input-' + track.key }"
+            />
+          </NFormItem>
         </div>
       </div>
-    </div>
-    <p v-if="!storageAvailable" :class="$style.warning" role="status">{{ t('input.storage') }}</p>
+    </NCard>
+    <NAlert v-if="!storageAvailable" type="warning" :show-icon="false" role="status">{{ t('input.storage') }}</NAlert>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { PlaygroundForm } from '../lib/playground'
 
+import { NAlert, NCard, NFormItem, NH2, NInput } from 'naive-ui'
 import { computed } from 'vue'
 
 import { detectFormat } from '@gondola-lyrics/kit'
@@ -53,6 +58,12 @@ import ControlTabs from './control-tabs.vue'
 
 const props = defineProps<{ form: PlaygroundForm; storageAvailable: boolean }>()
 const { t } = useI18n()
+const editorProps = {
+  spellcheck: false,
+  autocomplete: 'off',
+  autocapitalize: 'off',
+  style: { fontFamily: 'var(--mono)', fontSize: '12px', lineHeight: '1.9', tabSize: 2 },
+}
 const content = computed({
   get: () => {
     return props.form[SOURCE_CONTENT_KEYS[props.form.mode]]
@@ -123,74 +134,27 @@ const tracks = computed(() => {
 .card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
 }
 
 .editor {
-  display: block;
   width: 100%;
-  min-height: 260px;
-  padding: 18px;
-  resize: vertical;
-  border: 0;
-  background: #fcfdff;
-  color: #1c3b54;
-  font: 12px / 1.9 var(--mono);
-  tab-size: 2;
 
-  &:focus-visible {
-    outline: 0;
-    box-shadow: inset 0 0 0 2px rgb(43 127 174 / 24%);
-  }
-
-  &::placeholder {
-    color: #91a4b4;
+  :global(textarea) {
+    min-height: 260px;
+    padding: 16px;
   }
 }
 
 .tracks {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px;
   border-top: 1px solid var(--line);
 }
 
 .track {
   min-width: 0;
-  background: #fcfdff;
-
-  + .track {
-    border-left: 1px solid var(--line);
-  }
-}
-
-.trackLabel {
-  display: block;
-  padding: 12px 18px 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.trackEditor {
-  min-height: 130px;
-  resize: none;
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-@media (max-width: 820px) {
-  .editor {
-    padding: 14px;
-    line-height: 1.7;
-  }
 }
 
 @media (max-width: 520px) {
@@ -198,34 +162,12 @@ const tracks = computed(() => {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .track + .track {
-    border-top: 1px solid var(--line);
-    border-left: 0;
+  .editor :global(textarea) {
+    padding: 12px;
   }
 
-  .editor {
-    min-height: 220px;
-    padding: 14px 12px;
+  .tracks {
+    padding: 12px;
   }
-
-  .trackEditor {
-    min-height: 110px;
-  }
-
-  .trackLabel {
-    padding-inline: 12px;
-  }
-}
-
-.warning {
-  margin: 0;
-  padding: 12px 16px;
-  border: 1px solid #ebdfc8;
-  border-radius: var(--radius);
-  background: #fffbf3;
-  color: #805d25;
-  font-size: 12px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
 }
 </style>

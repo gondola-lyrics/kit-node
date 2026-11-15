@@ -1,46 +1,59 @@
 <template>
   <div :class="[$style.lyricLine, { [$style.withMeta]: hasMeta, [$style.backgroundLine]: background }]">
     <div v-if="hasMeta" :class="$style.lineMeta">
-      <span v-if="background" :class="$style.backgroundLabel">{{ t('result.background') }}</span>
-      <span v-if="line.time" :class="$style.lineTime">{{ formatRange(line.time) }}</span>
+      <NText v-if="background" depth="3" :class="$style.backgroundLabel">{{ t('result.background') }}</NText>
+      <NText v-if="line.time" depth="3" :class="$style.lineTime">{{ formatRange(line.time) }}</NText>
       <div v-if="performers.length || line.languages.length" :class="$style.lineDetails">
-        <span v-for="(performer, index) in performers" :key="index" :class="[$style.performer, { [$style.identifier]: performer.fallback }]">{{
-          performer.text
-        }}</span>
-        <span v-for="(language, index) in line.languages" :key="`language-${index}`" :class="$style.lineLanguage">{{ language }}</span>
+        <NTag
+          v-for="(performer, index) in performers"
+          :key="index"
+          size="small"
+          type="primary"
+          :class="[$style.performer, { [$style.identifier]: performer.fallback }]"
+          >{{ performer.text }}</NTag
+        >
+        <NText v-for="(language, index) in line.languages" :key="`language-${index}`" depth="3" :class="$style.lineLanguage">{{ language }}</NText>
       </div>
     </div>
     <div :class="$style.lineBody">
-      <p v-if="instrumental" :class="$style.instrumental">{{ t('result.instrumental') }}</p>
+      <NText v-if="instrumental" depth="3" :class="$style.instrumental">{{ t('result.instrumental') }}</NText>
       <div v-else-if="words.length" :class="$style.words">
         <template v-for="(word, index) in words" :key="index">
           <span v-if="word.type === EnrichedWordType.SPACE" :class="$style.wordSpace">{{ word.text }}</span>
-          <span v-else :class="[$style.word, { [$style.emphasized]: word.emphasized }]" :title="word.title">
-            <span v-for="(item, itemIndex) in word.rubies" :key="`ruby-${itemIndex}`" :class="$style.wordRuby" :title="item.title">{{
-              item.text
-            }}</span>
-            <span v-for="(item, itemIndex) in word.romans" :key="`roman-${itemIndex}`" :class="$style.wordRoman" :title="item.title">{{
-              item.text
-            }}</span>
-            <span
-              v-for="(item, itemIndex) in word.translations"
-              :key="`translation-${itemIndex}`"
-              :class="$style.wordTranslation"
-              :title="item.language"
-              >{{ item.text }}</span
-            >
-            <span :class="$style.wordText">{{ word.text }}</span>
-          </span>
+          <NTooltip v-else :disabled="!word.title" :delay="250">
+            <template #trigger>
+              <span :class="[$style.word, { [$style.emphasized]: word.emphasized }]">
+                <NText v-for="(item, itemIndex) in word.rubies" :key="`ruby-${itemIndex}`" :class="$style.wordRuby" :title="item.title">{{
+                  item.text
+                }}</NText>
+                <NText v-for="(item, itemIndex) in word.romans" :key="`roman-${itemIndex}`" depth="3" :class="$style.wordRoman" :title="item.title">{{
+                  item.text
+                }}</NText>
+                <NText
+                  v-for="(item, itemIndex) in word.translations"
+                  :key="`translation-${itemIndex}`"
+                  :class="$style.wordTranslation"
+                  :title="item.language"
+                  depth="3"
+                  >{{ item.text }}</NText
+                >
+                <NText :class="$style.wordText">{{ word.text }}</NText>
+              </span>
+            </template>
+            {{ word.title }}
+          </NTooltip>
         </template>
       </div>
-      <p v-else-if="text" :class="$style.plainText">{{ text }}</p>
-      <p v-else :class="$style.emptyLine">{{ t('result.emptyLine') }}</p>
+      <NText v-else-if="text" :class="$style.plainText">{{ text }}</NText>
+      <NText v-else depth="3" :class="$style.emptyLine">{{ t('result.emptyLine') }}</NText>
 
       <div v-if="line.annotation?.romans.length || line.annotation?.translations.length" :class="$style.lineAnnotations">
-        <p v-for="(item, index) in line.annotation?.romans" :key="`roman-${index}`" :class="$style.lineRoman" :title="item.language">
+        <NText v-for="(item, index) in line.annotation?.romans" :key="`roman-${index}`" depth="3" :class="$style.lineRoman" :title="item.language">
           {{ getEnrichedLineAnnotationRomanText(item) }}
-        </p>
-        <p v-for="(item, index) in line.annotation?.translations" :key="`translation-${index}`" :title="item.language">{{ item.text }}</p>
+        </NText>
+        <NText v-for="(item, index) in line.annotation?.translations" :key="`translation-${index}`" depth="3" :title="item.language">{{
+          item.text
+        }}</NText>
       </div>
     </div>
     <div v-if="backgrounds.length" :class="$style.backgrounds">
@@ -60,6 +73,7 @@ import {
   getEnrichedWordAnnotationItemText,
   resolveLineAgents,
 } from '@gondola-lyrics/model'
+import { NTag, NText, NTooltip } from 'naive-ui'
 import { computed } from 'vue'
 
 import { useI18n } from '../composables/useI18n'
@@ -169,13 +183,13 @@ const backgrounds = computed(() => {
 
 .performer {
   max-width: 100%;
-  padding: 1px 7px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: var(--wash);
-  color: var(--primary-deep);
+  height: auto;
   font-size: 10.5px;
-  overflow-wrap: anywhere;
+
+  :global(.n-tag__content) {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }
 
 .identifier {
@@ -211,6 +225,7 @@ const backgrounds = computed(() => {
 .plainText,
 .emptyLine,
 .instrumental {
+  display: block;
   margin: 0;
 }
 
@@ -269,10 +284,6 @@ const backgrounds = computed(() => {
   line-height: 1.6;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-
-  p {
-    margin: 0;
-  }
 }
 
 .backgrounds {
