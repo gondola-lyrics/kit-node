@@ -25,12 +25,10 @@ import {
   makeEnrichedWordSpace,
 } from '@gondola-lyrics/model'
 
-import { decodeBase64 } from '@root/utils'
-
 import { finalizeLyric } from '../result'
 import { attachRubies, isPlaceholderText, readRubyEntries } from '../qrc'
-import { META_PATTERN, TAG_PATTERN, readLrc, readLrcMetaTags, scanWordTags } from '../lrc'
-import { FORMAT, LINE_PATTERN, WORD_PATTERN, readKrcContent } from './common'
+import { TAG_PATTERN, readLrc, readLrcMetaTags, scanWordTags } from '../lrc'
+import { FORMAT, LINE_PATTERN, WORD_PATTERN, readKrcContent, readKrcLanguagePayload, readKrcMetaTag } from './common'
 
 export type KrcParseInput = KrcContent
 
@@ -95,9 +93,9 @@ export const readKrc = (text: string): KrcReadResult => {
       continue
     }
     for (const tag of line.matchAll(TAG_PATTERN)) {
-      const meta = META_PATTERN.exec(tag[1]!)
+      const meta = readKrcMetaTag(tag[1]!)
       if (meta) {
-        metaTags.push({ key: meta[1]!.toLowerCase(), value: meta[2]!.trim() })
+        metaTags.push(meta)
       }
     }
   }
@@ -131,20 +129,6 @@ interface LanguageTrack {
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
   return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-// Payload recognition stays strict: plain tags and coincidental base64 must never pass as Kugou data.
-const readPayload = (value: string): Record<string, unknown> | undefined => {
-  const bytes = decodeBase64(value)
-  if (!bytes) {
-    return undefined
-  }
-  try {
-    const payload: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-    return isObject(payload) && payload.version === 1 && Array.isArray(payload.content) ? payload : undefined
-  } catch {
-    return undefined
-  }
 }
 
 const readTrack = (value: unknown): LanguageTrack | undefined => {
@@ -220,7 +204,7 @@ const attachKugouLanguage = (lines: EnrichedLine[], meta: Meta): EnrichedLine[] 
   const unknowns: UnknownEntry[] = []
   const selected = new Map<number, string[][]>()
   for (const entry of meta.unknowns) {
-    const payload = entry.key === 'language' ? readPayload(entry.value) : undefined
+    const payload = entry.key === 'language' ? readKrcLanguagePayload(entry.value) : null
     if (!payload) {
       unknowns.push(entry)
       continue

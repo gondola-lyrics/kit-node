@@ -1,12 +1,12 @@
-import { LINE_PATTERN, readKrcContent } from './common'
+import { isTime } from '@root/utils'
 
-// Kugou wraps its language matrix in a base64 object, so `ey` is the readable head of `{"`.
-const LANGUAGE_PATTERN = /\[language:\s*ey[A-Za-z0-9+/=]*\]/
+import { TAG_PATTERN } from '../lrc'
+import { LINE_PATTERN, readKrcContent, readKrcLanguagePayload, readKrcMetaTag } from './common'
 
 /**
  * Recognizes native KRC from a duration line carrying a complete three-field word tag, or from the Kugou language container.
  *
- * Both signals live in the original plaintext, so an auxiliary track still cannot decide the format.
+ * Language containers are checked only where the selected native or LRC reader accepts metadata.
  *
  * @returns Whether the original plaintext contains a strong KRC syntax signal.
  */
@@ -16,14 +16,41 @@ export const detectKrc = (input: unknown): boolean => {
     return false
   }
 
-  // Row syntax stays the stronger signal; the container tag also covers Kugou's LRC fallback.
-  if (LANGUAGE_PATTERN.test(source.original)) {
-    return true
-  }
-
-  return source.original.split(/\r\n?|\n/).some((raw) => {
+  const metadataLines: string[] = []
+  let native = false
+  for (const raw of source.original.split(/\r\n?|\n/)) {
     const line = raw.trimStart()
     const header = LINE_PATTERN.exec(line)
-    return !!header && /<\d+,\d+,\d+>/.test(line.slice(header[0].length))
-  })
+    if (header) {
+      native = true
+      if (/<\d+,\d+,\d+>/.test(line.slice(header[0].length))) {
+        return true
+      }
+    } else if (line.startsWith('[')) {
+      metadataLines.push(line)
+    }
+  }
+
+  for (const line of metadataLines) {
+    let cursor = 0
+    for (const tag of line.matchAll(TAG_PATTERN)) {
+      const body = tag[1]!
+      // LRC metadata stops at the first timestamp or literal text; native KRC scans the whole metadata row.
+      if (!native && (line.slice(cursor, tag.index).trim() || isTime(body))) {
+        break
+      }
+      const meta = readKrcMetaTag(body)
+      if (!meta) {
+        if (!native) {
+          break
+        }
+        continue
+      }
+      if (meta.key === 'language' && readKrcLanguagePayload(meta.value)) {
+        return true
+      }
+      cursor = tag.index + tag[0].length
+    }
+  }
+  return false
 }
