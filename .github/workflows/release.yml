@@ -42,6 +42,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run tests
+        run: npm run test
+
       - name: Check code
         run: |
           npm run check
