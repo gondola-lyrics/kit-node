@@ -149,6 +149,12 @@ npm run check
 npm run format
 ```
 
+**Test**
+
+```bash
+npm run test
+```
+
 ## License
 
 [MIT](./LICENSE)

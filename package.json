@@ -29,8 +29,9 @@
     "build-change-log": "tsx script/build-change-log.ts",
     "bump-version": "tsx script/bump-version.ts",
     "release": "tsx script/release.ts",
+    "test": "tsx --no-cache --test \"test/**/*.test.ts\"",
     "check": "tsc --noEmit",
-    "format": "prettier --write src"
+    "format": "prettier --write src test"
   },
   "sideEffects": false,
   "main": "./dist/index.js",
